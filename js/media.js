@@ -22,9 +22,7 @@
       const elId = grid.id + "-" + id;
       let el = document.getElementById(elId);
       if (!el) {
-        el = document.createElement("div");
-        el.className = "vid-tile" + (mine ? " mine" : "");
-        el.id = elId;
+        el = document.createElement("div"); el.className = "vid-tile" + (mine ? " mine" : ""); el.id = elId;
         var video = document.createElement("video"); video.setAttribute("playsinline","true"); video.setAttribute("autoplay","true");
         var image = document.createElement("img"); image.alt = "";
         var label = document.createElement("span"); label.className = "vid-name";
@@ -51,9 +49,7 @@
     mqttClient = mqtt.connect("wss://broker.emqx.io:8084/mqtt", { clientId: "rtc-" + Math.random().toString(16).slice(2, 12), clean: true, reconnectPeriod: 1200 });
     mqttClient.on("connect", function () {
       if (!roomCode) return;
-      mqttClient.subscribe(topicRtc(), { qos: 0 });
-      mqttClient.subscribe(topicFrame(), { qos: 0 });
-      announce();
+      mqttClient.subscribe(topicRtc(), { qos: 0 }); mqttClient.subscribe(topicFrame(), { qos: 0 }); announce();
     });
     mqttClient.on("message", function (tp, payload) {
       if (!roomCode) return;
@@ -190,7 +186,7 @@
     if (!roomCode) throw new Error("Join a room first.");
     if (starting) return localStream;
     if (localStream && localStream.getTracks().some(function (t) { return t.readyState === "live"; })) {
-      tile(userId, userName, localStream, true); announce(); startFrameRelay(); startMeter(); startCaptions(onCaption); return localStream;
+      tile(userId, userName, localStream, true); announce(); startFrameRelay(); startMeter(); return localStream;
     }
     starting = true;
     try {
@@ -208,7 +204,7 @@
         makeOffer(id);
       });
       members.forEach(function (m) { if (m && m.userId && m.userId !== userId) ensurePeer(m.userId); });
-      announce(); startFrameRelay(); startMeter(); startCaptions(onCaption);
+      announce(); startFrameRelay(); startMeter();
       if (onStatus) onStatus("live"); return localStream;
     } finally { starting = false; }
   }
@@ -233,42 +229,43 @@
   function startCaptions(handler) {
     if (handler) onCaption = handler;
     var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SR) return false; if (captionsOn) return true; captionsOn = true;
+    if (!SR) return false;
+    stopCaptions();
+    captionsOn = true;
+    var langs = ["ar-SA", "en-US"];
+    var li = window.ACMA_I18N && ACMA_I18N.current() === "en" ? 1 : 0;
     function listen() {
       if (!captionsOn) return;
-      var rec = new SR(); captions = rec;
-      rec.continuous = true; rec.interimResults = true; rec.maxAlternatives = 1;
-      rec.lang = window.ACMA_I18N ? ACMA_I18N.speechLang() : "en-US";
+      var rec = new SR();
+      captions = rec;
+      rec.continuous = false;
+      rec.interimResults = true;
+      rec.maxAlternatives = 1;
+      rec.lang = langs[li % langs.length];
       rec.onresult = function (ev) {
-        var res = ev.results[ev.results.length - 1];
-        var text = (res[0] && res[0].transcript || "").trim();
+        var text = ""; var final = false;
+        for (var i = ev.resultIndex; i < ev.results.length; i++) {
+          text += ev.results[i][0].transcript || "";
+          if (ev.results[i].isFinal) final = true;
+        }
+        text = text.trim();
         if (!text) return;
-        if (onCaption) onCaption({ text: text, lang: detectLang(text), interim: !res.isFinal });
+        if (onCaption) onCaption({ text: text, lang: detectLang(text), interim: !final });
       };
-      rec.onend = function () { if (captionsOn) setTimeout(listen, 400); };
+      rec.onend = function () { if (captionsOn) { li += 1; setTimeout(listen, 250); } };
       rec.onerror = function (ev) { if (ev.error === "not-allowed") captionsOn = false; };
-      try { rec.start(); } catch (e) {}
+      try { rec.start(); } catch (e) { setTimeout(listen, 800); }
     }
-    listen(); return true;
+    listen();
+    return true;
   }
-  function tapTalk(handler) {
-    if (handler) onCaption = handler;
-    var SR = window.SpeechRecognition || window.webkitSpeechRecognition; if (!SR) return false;
-    try {
-      var rec = new SR(); rec.lang = window.ACMA_I18N ? ACMA_I18N.speechLang() : "en-US";
-      rec.interimResults = true; rec.continuous = false;
-      rec.onresult = function (ev) {
-        var res = ev.results[ev.results.length - 1];
-        var text = (res[0] && res[0].transcript || "").trim();
-        if (text && onCaption) onCaption({ text: text, lang: detectLang(text), interim: !res.isFinal });
-      };
-      rec.start(); return true;
-    } catch (e) { return false; }
+  function stopCaptions() {
+    captionsOn = false;
+    if (captions) { try { captions.stop(); } catch (e) {} captions = null; }
   }
-  function stopCaptions() { captionsOn = false; if (captions) { try { captions.stop(); } catch (e) {} captions = null; } }
   global.ACMA_MEDIA = {
     attachRoom: attachRoom, setMembers: setMembers, start: start, stop: stop,
-    startCaptions: startCaptions, stopCaptions: stopCaptions, tapTalk: tapTalk,
+    startCaptions: startCaptions, stopCaptions: stopCaptions,
     toggleMic: toggleMic, toggleCam: toggleCam,
     micOn: function () { return micOn; }, camOn: function () { return camOn; },
     remoteCount: function () { return Object.keys(remotes).length + Object.keys(frames).length; },
