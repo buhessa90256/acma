@@ -1,6 +1,6 @@
 (function () {
-  const $ = (sel, root = document) => root.querySelector(sel);
-  const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
+  const $ = (sel, root) => (root || document).querySelector(sel);
+  const $$ = (sel, root) => Array.prototype.slice.call((root || document).querySelectorAll(sel));
   const state = ACMA_ENGINE.loadState();
   let user = null;
   let engine = null;
@@ -11,54 +11,98 @@
 
   function toast(msg) {
     const el = $("#toast");
+    if (!el) return;
     el.textContent = msg;
     el.classList.add("show");
-    setTimeout(() => el.classList.remove("show"), 2800);
+    setTimeout(function () { el.classList.remove("show"); }, 2800);
+  }
+
+  function persist() { ACMA_ENGINE.saveState(state); }
+
+  function ensureUser(role) {
+    const key = role || state.userRole || "host";
+    user = Object.assign({}, ACMA_DATA.users[key] || ACMA_DATA.users.host);
+    state.userRole = user.role;
+    persist();
+    const chip = $("#who-chip");
+    if (chip) chip.textContent = (user.short || user.name) + " \u00b7 " + user.role;
+    return user;
   }
 
   function show(name) {
-    screens.forEach((id) => $("#screen-" + id)?.classList.toggle("active", id === name));
-    $$(".tabbar button, .desk-nav button").forEach((b) => {
-      b.classList.toggle("active", b.dataset.go === name);
+    screens.forEach(function (id) {
+      const el = $("#screen-" + id);
+      if (el) el.classList.toggle("active", id === name);
     });
-    window.scrollTo({ top: 0, behavior: "instant" });
+    $$(".tabbar button, .desk-nav button").forEach(function (b) {
+      b.classList.toggle("active", b.getAttribute("data-go") === name);
+    });
+    window.scrollTo(0, 0);
   }
 
-  function persist() {
-    ACMA_ENGINE.saveState(state);
+  function go(name) {
+    ensureUser();
+    if (name === "home") { renderHome(); show("home"); return; }
+    if (name === "live") { show("live"); if (!engine) startSession(); return; }
+    if (name === "report") { renderReport(state.sessions[0] || { report: null, title: "No report", transcript: [] }); show("report"); return; }
+    if (name === "account") { renderAccount(); show("account"); return; }
+    if (name === "admin") { renderAdmin(); show("admin"); return; }
+    if (name === "compliance") { renderCompliance(); show("compliance"); return; }
+    if (name === "login") show("login");
   }
 
   function login(role) {
-    user = { ...ACMA_DATA.users[role] };
-    $("#who-chip").textContent = user.name.split(" ")[0] + " \u00b7 " + user.role;
+    ensureUser(role);
     renderHome();
     show("home");
     toast("Signed in as " + user.title);
   }
 
   function renderHome() {
-    $("#home-hero").innerHTML = `<p class="kicker">${user.title}</p><h2>Good day, ${user.name.split(" ")[0]}.</h2><p>${
-      user.role === "host"
-        ? "Start an assisted session for Hall 402-B. Edge vision and cloud STT will bind who said what in real time."
-        : user.role === "attendee"
-        ? "Join the live room to follow captions and raise a hand. Your biometric stream is processed in-memory unless you consented to recording."
-        : user.role === "admin"
-        ? "Confirm A/V endpoints, WebRTC gateway health, and retention defaults before faculty go live."
-        : "Review consent posture, purge policy, and FERPA/GDPR alignment for classroom capture."
-    }</p>`;
+    ensureUser();
+    const first = user.short || user.name;
+    let blurb = "Review consent posture and classroom capture rules.";
+    if (user.role === "host") blurb = "Start an assisted session for Hall 402-B.";
+    else if (user.role === "attendee") blurb = "Join the live room to follow captions and raise a hand.";
+    else if (user.role === "admin") blurb = "Confirm A/V endpoints and retention defaults.";
+    $("#home-hero").innerHTML = '<p class="kicker">' + user.title + "</p><h2>Good day, " + first + ".</h2><p>" + blurb + "</p>";
     const last = state.sessions[0];
-    $("#home-stats").innerHTML = `<div class="card stat"><div class="val">${state.sessions.length}</div><div class="lbl">Stored sessions</div></div><div class="card stat"><div class="val">${state.consent ? "On" : "Off"}</div><div class="lbl">Capture consent</div></div><div class="card stat"><div class="val">${state.retentionDays}d</div><div class="lbl">Retention window</div></div><div class="card stat"><div class="val">${last ? last.report?.speakerAccuracy || "\u2014" : "\u2014"}</div><div class="lbl">Last ID accuracy</div></div>`;
-    $("#home-actions").innerHTML = `<button class="btn full" data-act="start">${user.role === "attendee" ? "Join live session" : "Run assisted session"}</button><div class="row" style="margin-top:10px"><button class="btn ghost" data-act="reports">Session reports</button>${user.role === "admin" ? '<button class="btn ghost" data-act="admin">A/V and retention</button>' : ""}${user.role === "compliance" ? '<button class="btn ghost" data-act="legal">Compliance desk</button>' : ""}</div>`;
-    const list = state.sessions.slice(0, 5).map((s) => `<button class="card" style="text-align:left;width:100%" data-open="${s.id}"><h3>${s.title}</h3><p class="muted">${s.code} \u00b7 ${s.room} \u00b7 ${s.status} \u00b7 ${new Date(s.startedAt).toLocaleString()}</p></button>`).join("") || `<div class="card muted">No finalized sessions yet.</div>`;
-    $("#home-sessions").innerHTML = list;
+    const acc = last && last.report && last.report.speakerAccuracy ? last.report.speakerAccuracy : "-";
+    $("#home-stats").innerHTML =
+      '<div class="card stat"><div class="val">' + state.sessions.length + '</div><div class="lbl">Stored sessions</div></div>' +
+      '<div class="card stat"><div class="val">' + (state.consent ? "On" : "Off") + '</div><div class="lbl">Capture consent</div></div>' +
+      '<div class="card stat"><div class="val">' + state.retentionDays + 'd</div><div class="lbl">Retention window</div></div>' +
+      '<div class="card stat"><div class="val">' + acc + '</div><div class="lbl">Last ID accuracy</div></div>';
+    let extra = "";
+    if (user.role === "admin") extra += '<button class="btn ghost" data-act="admin" type="button">A/V and retention</button>';
+    if (user.role === "compliance") extra += '<button class="btn ghost" data-act="legal" type="button">Compliance desk</button>';
+    $("#home-actions").innerHTML =
+      '<button class="btn full" data-act="start" type="button">' + (user.role === "attendee" ? "Join live session" : "Run assisted session") + "</button>" +
+      '<div class="row" style="margin-top:10px"><button class="btn ghost" data-act="reports" type="button">Session reports</button>' + extra + "</div>";
+    const list = state.sessions.slice(0, 5).map(function (s) {
+      return '<button class="card" style="text-align:left;width:100%" data-open="' + s.id + '" type="button"><h3>' + s.title + '</h3><p class="muted">' + s.code + " \u00b7 " + s.room + " \u00b7 " + s.status + "</p></button>";
+    }).join("");
+    $("#home-sessions").innerHTML = list || '<div class="card muted">No finalized sessions yet.</div>';
   }
 
   function renderFaces(session) {
-    $("#faces").innerHTML = ACMA_DATA.participants.map((p) => {
+    $("#faces").innerHTML = ACMA_DATA.participants.map(function (p) {
       const on = session.activeSpeaker === p.id;
-      const hand = session.raisedHands.includes(p.id);
-      return `<div class="face ${on ? "on" : ""}"><div class="dot" style="background:${p.color}33;color:${p.color}">${p.initials}${hand ? "\u270b" : ""}</div><b>${p.name.split(" ")[0]}</b><span class="muted">${on ? "speaking" : hand ? "hand" : p.role}</span></div>`;
+      const hand = session.raisedHands.indexOf(p.id) !== -1;
+      return '<div class="face ' + (on ? "on" : "") + '"><div class="dot" style="background:' + p.color + "33;color:" + p.color + '">' + p.initials + "</div><b>" + p.name.split(" ").pop() + '</b><span class="muted">' + (on ? "speaking" : hand ? "hand" : p.role) + "</span></div>";
     }).join("");
+  }
+
+  function fmtT(sec) {
+    const m = Math.floor(sec / 60);
+    const s = Math.floor(sec % 60);
+    return String(m).padStart(2, "0") + ":" + String(s).padStart(2, "0");
+  }
+
+  function escapeHtml(s) {
+    const box = document.createElement("div");
+    box.textContent = s == null ? "" : String(s);
+    return box.innerHTML;
   }
 
   function renderTick(session, obj) {
@@ -75,47 +119,40 @@
       $("#caption-text").textContent = last.text;
     }
     $("#json-live").textContent = JSON.stringify(obj, null, 2);
-    $("#transcript").innerHTML = session.transcript.slice().reverse().map((line) => `<div class="line"><time>${fmtT(line.t)}</time><div><span class="spk">${line.speaker}</span> ${escapeHtml(line.text)}</div></div>`).join("");
+    $("#transcript").innerHTML = session.transcript.slice().reverse().map(function (line) {
+      return '<div class="line"><time>' + fmtT(line.t) + '</time><div><span class="spk">' + line.speaker + "</span> " + escapeHtml(line.text) + "</div></div>";
+    }).join("");
     renderFaces(session);
-    $("#live-status").textContent = session.pipeline === "ready" ? "LIVE" : session.pipeline.toUpperCase();
-  }
-
-  function fmtT(sec) {
-    const m = Math.floor(sec / 60);
-    const s = Math.floor(sec % 60);
-    return String(m).padStart(2, "0") + ":" + String(s).padStart(2, "0");
-  }
-
-  function escapeHtml(s) {
-    const box = document.createElement("div");
-    box.textContent = s == null ? "" : String(s);
-    return box.innerHTML;
-  }
-
-  async function startSession() {
-    if (!state.consent) {
-      $("#modal-consent").classList.add("open");
-      return;
-    }
-    if (engine) engine.stop();
-    engine = new ACMA_ENGINE.SessionEngine(renderTick, onEngineEvent);
-    engine.setSpeed(Number(document.getElementById("speed").value) || 2);
-    const session = engine.start();
-    $("#session-code").textContent = session.code;
-    $("#session-title").textContent = session.title;
-    $("#caption-who").textContent = "Calibrating capture pipeline";
-    $("#caption-text").textContent = "Camera, mic array and VAD coming online\u2026";
-    $("#transcript").innerHTML = "";
-    renderFaces(session);
-    show("live");
-    $("#chip-live").classList.remove("hidden");
-    if (user.role !== "attendee") tryCamera();
+    $("#live-status").textContent = session.pipeline === "ready" ? "LIVE" : String(session.pipeline).toUpperCase();
   }
 
   function onEngineEvent(type, payload) {
     if (type === "interrupt") toast("Cross-talk flagged \u00b7 " + payload.speaker);
     if (type === "hand") toast("Raised hand \u00b7 " + payload.participant.name);
     if (type === "pipeline") toast(payload.message);
+  }
+
+  function startSession() {
+    ensureUser();
+    if (!state.consent) {
+      show("live");
+      $("#modal-consent").classList.add("open");
+      return;
+    }
+    if (engine) engine.stop();
+    engine = new ACMA_ENGINE.SessionEngine(renderTick, onEngineEvent);
+    const speedEl = $("#speed");
+    engine.setSpeed(Number(speedEl && speedEl.value) || 2);
+    const session = engine.start();
+    $("#session-code").textContent = session.code;
+    $("#session-title").textContent = session.title;
+    $("#caption-who").textContent = "Calibrating capture pipeline";
+    $("#caption-text").textContent = "Camera, mic array and VAD coming online.";
+    $("#transcript").innerHTML = "";
+    renderFaces(session);
+    show("live");
+    $("#chip-live").classList.remove("hidden");
+    if (user.role !== "attendee") tryCamera();
   }
 
   async function tryCamera() {
@@ -130,7 +167,7 @@
   }
 
   function stopCamera() {
-    if (mediaStream) mediaStream.getTracks().forEach((t) => t.stop());
+    if (mediaStream) mediaStream.getTracks().forEach(function (t) { t.stop(); });
     mediaStream = null;
     const v = $("#room-video");
     if (v) { v.srcObject = null; v.classList.add("hidden"); }
@@ -139,26 +176,47 @@
   }
 
   function endSession() {
-    if (!engine) return;
+    if (!engine) {
+      renderReport({ report: null, title: "No report", transcript: [] });
+      show("report");
+      return;
+    }
     const session = engine.end();
     state.sessions.unshift(session);
     persist();
     stopCamera();
     $("#chip-live").classList.add("hidden");
+    engine = null;
     renderReport(session);
     show("report");
-    toast("Minutes package ready (under 5 minutes).");
+    toast("Minutes package ready.");
   }
 
   function renderReport(session) {
-    const r = session.report;
+    const r = session && session.report;
     if (!r) {
-      $("#report-body").innerHTML = `<div class="card muted">End a live session to generate minutes.</div>`;
+      $("#report-body").innerHTML = '<div class="hero"><p class="kicker">Session report</p><h2>No minutes yet</h2><p>Open Live, grant consent, then end the session to generate a report.</p></div><button class="btn" data-go="live" type="button" style="margin-top:12px">Go to Live</button>';
       return;
     }
-    $("#report-body").innerHTML = `<div class="hero"><p class="kicker">Session report</p><h2>${session.title}</h2><p>${session.code} \u00b7 ${session.room} \u00b7 ${r.durationSec}s \u00b7 WER ${r.wer}% \u00b7 Speaker map ${r.speakerAccuracy}%</p></div><div class="grid stats" style="margin-top:12px"><div class="card stat"><div class="val">${session.transcript.length}</div><div class="lbl">Transcript chunks</div></div><div class="card stat"><div class="val">${r.interruptions}</div><div class="lbl">Interruptions</div></div><div class="card stat"><div class="val">${r.volumeSpikes}</div><div class="lbl">Volume spikes</div></div><div class="card stat"><div class="val">${r.uncertainMatches}</div><div class="lbl">Uncertain AV matches</div></div></div><section class="card report" style="margin-top:12px"><h3>Executive summary</h3><p>${r.abstract}</p></section><section class="card report"><h3>Key decisions</h3><ul>${r.decisions.map((d) => `<li>${d}</li>`).join("")}</ul></section><section class="card report"><h3>Action items</h3><ul>${r.actions.map((a) => `<li><b>${a.owner}</b> \u2014 ${a.task} <span class="muted">(${a.due})</span></li>`).join("")}</ul></section><section class="card"><h3>Participation flags</h3><div class="flags" style="margin-top:8px">${r.dominant.map((n) => `<span class="hot">Dominant \u00b7 ${n}</span>`).join("")}${r.silent.map((n) => `<span class="silent">Silent \u00b7 ${n}</span>`).join("")}</div><p class="muted" style="margin-top:8px">Flags are host-only and are not written into attendee notes.</p></section><section class="card"><h3>Diarized transcript</h3><div class="list" style="max-height:360px;margin-top:8px">${session.transcript.map((line) => `<div class="line"><time>${fmtT(line.t)}</time><div><span class="spk">${line.speaker}</span> ${escapeHtml(line.text)}</div></div>`).join("")}</div></section><div class="row" style="margin-top:12px"><button class="btn" id="btn-share">Share notes with absentees</button><button class="btn ghost" id="btn-export">Export JSON package</button></div>`;
-    $("#btn-share").onclick = () => toast("Notes queued to absentees and attendees.");
-    $("#btn-export").onclick = () => exportSession(session);
+    $("#report-body").innerHTML =
+      '<div class="hero"><p class="kicker">Session report</p><h2>' + session.title + "</h2><p>" + session.code + " \u00b7 " + session.room + " \u00b7 " + r.durationSec + "s</p></div>" +
+      '<div class="grid stats" style="margin-top:12px">' +
+      '<div class="card stat"><div class="val">' + session.transcript.length + '</div><div class="lbl">Transcript chunks</div></div>' +
+      '<div class="card stat"><div class="val">' + r.interruptions + '</div><div class="lbl">Interruptions</div></div>' +
+      '<div class="card stat"><div class="val">' + r.volumeSpikes + '</div><div class="lbl">Volume spikes</div></div>' +
+      '<div class="card stat"><div class="val">' + r.speakerAccuracy + '%</div><div class="lbl">Speaker map</div></div></div>' +
+      '<section class="card report" style="margin-top:12px"><h3>Executive summary</h3><p>' + r.abstract + "</p></section>" +
+      '<section class="card report"><h3>Key decisions</h3><ul>' + r.decisions.map(function (d) { return "<li>" + d + "</li>"; }).join("") + "</ul></section>" +
+      '<section class="card report"><h3>Action items</h3><ul>' + r.actions.map(function (a) { return "<li><b>" + a.owner + "</b> - " + a.task + " (" + a.due + ")</li>"; }).join("") + "</ul></section>" +
+      '<section class="card"><h3>Diarized transcript</h3><div class="list" style="max-height:360px;margin-top:8px">' +
+      session.transcript.map(function (line) {
+        return '<div class="line"><time>' + fmtT(line.t) + '</time><div><span class="spk">' + line.speaker + "</span> " + escapeHtml(line.text) + "</div></div>";
+      }).join("") + "</div></section>" +
+      '<div class="row" style="margin-top:12px"><button class="btn" id="btn-share" type="button">Share notes</button><button class="btn ghost" id="btn-export" type="button">Export JSON</button></div>';
+    const share = $("#btn-share");
+    const exp = $("#btn-export");
+    if (share) share.onclick = function () { toast("Notes queued to absentees and attendees."); };
+    if (exp) exp.onclick = function () { exportSession(session); };
   }
 
   function exportSession(session) {
@@ -170,8 +228,15 @@
   }
 
   function renderAdmin() {
-    $("#admin-body").innerHTML = `<div class="hero"><p class="kicker">IT and AV</p><h2>Configure room integration</h2><p>Software integrates with existing hardware. No PTZ install is in scope.</p></div><div class="card" style="margin-top:12px"><div class="toggle"><span>Camera endpoint</span><input id="av-cam" type="text" value="${state.av.camera}"></div><div class="toggle"><span>Microphone array</span><input id="av-mic" type="text" value="${state.av.mic}"></div><div class="toggle"><span>Gateway</span><input id="av-gw" type="text" value="${state.av.gateway}"></div><div class="toggle"><span>Retention (days)</span><input id="av-ret" type="text" value="${state.retentionDays}"></div></div><div class="card" style="margin-top:12px"><h3>Conference connectors</h3><p class="muted">REST / Webhooks to Zoom, Teams and Google Meet.</p><div class="flags" style="margin-top:8px">${state.av.platforms.map((p) => `<span>${p} API</span>`).join("")}</div></div><button class="btn full" style="margin-top:12px" id="save-av">Save configuration</button>`;
-    $("#save-av").onclick = () => {
+    $("#admin-body").innerHTML =
+      '<div class="hero"><p class="kicker">IT and AV</p><h2>Configure room integration</h2><p>Software integrates with existing hardware.</p></div>' +
+      '<div class="card" style="margin-top:12px">' +
+      '<div class="toggle"><span>Camera endpoint</span><input id="av-cam" type="text" value="' + state.av.camera + '"></div>' +
+      '<div class="toggle"><span>Microphone array</span><input id="av-mic" type="text" value="' + state.av.mic + '"></div>' +
+      '<div class="toggle"><span>Gateway</span><input id="av-gw" type="text" value="' + state.av.gateway + '"></div>' +
+      '<div class="toggle"><span>Retention (days)</span><input id="av-ret" type="text" value="' + state.retentionDays + '"></div></div>' +
+      '<button class="btn full" style="margin-top:12px" id="save-av" type="button">Save configuration</button>';
+    $("#save-av").onclick = function () {
       state.av.camera = $("#av-cam").value;
       state.av.mic = $("#av-mic").value;
       state.av.gateway = $("#av-gw").value;
@@ -182,79 +247,48 @@
   }
 
   function renderCompliance() {
-    $("#compliance-body").innerHTML = `<div class="hero"><p class="kicker">GDPR / FERPA</p><h2>Privacy and retention desk</h2><p>Streams are encrypted in transit. Video and audio stay in-memory unless recording consent is explicit.</p></div><div class="card" style="margin-top:12px"><div class="toggle"><span>Session capture consent</span><b>${state.consent ? "Granted" : "Missing"}</b></div><div class="toggle"><span>Store consented recordings</span><b>${state.recordConsentedMedia ? "Allowed" : "Denied"}</b></div><div class="toggle"><span>Retention window</span><b>${state.retentionDays} days</b></div><div class="toggle"><span>Sessions on device</span><b>${state.sessions.length}</b></div></div><div class="row" style="margin-top:12px"><button class="btn warn" id="purge">Purge in-memory buffers and local sessions</button><button class="btn ghost" id="revoke">Revoke consent</button></div>`;
-    $("#purge").onclick = () => {
-      state.sessions = [];
-      persist();
-      toast("Local transcripts and metadata purged.");
-      renderCompliance();
-    };
-    $("#revoke").onclick = () => {
-      state.consent = false;
-      state.recordConsentedMedia = false;
-      persist();
-      toast("Consent revoked. Future capture is blocked.");
-      renderCompliance();
-    };
+    $("#compliance-body").innerHTML =
+      '<div class="hero"><p class="kicker">GDPR / FERPA</p><h2>Privacy and retention desk</h2><p>Streams stay in-memory unless recording consent is explicit.</p></div>' +
+      '<div class="card" style="margin-top:12px">' +
+      '<div class="toggle"><span>Session capture consent</span><b>' + (state.consent ? "Granted" : "Missing") + "</b></div>" +
+      '<div class="toggle"><span>Retention window</span><b>' + state.retentionDays + " days</b></div>" +
+      '<div class="toggle"><span>Sessions on device</span><b>' + state.sessions.length + "</b></div></div>" +
+      '<div class="row" style="margin-top:12px"><button class="btn warn" id="purge" type="button">Purge local sessions</button><button class="btn ghost" id="revoke" type="button">Revoke consent</button></div>';
+    $("#purge").onclick = function () { state.sessions = []; persist(); toast("Local transcripts purged."); renderCompliance(); };
+    $("#revoke").onclick = function () { state.consent = false; state.recordConsentedMedia = false; persist(); toast("Consent revoked."); renderCompliance(); };
   }
 
   function renderAccount() {
-    $("#account-body").innerHTML = `<div class="hero"><p class="kicker">Account</p><h2>${user.name}</h2><p>${user.title}</p></div><div class="card" style="margin-top:12px"><div class="toggle"><span>Role</span><b>${user.role}</b></div><div class="toggle"><span>Language</span><select id="lang"><option value="en">English</option><option value="ar">Arabic</option></select></div></div><button class="btn ghost full" style="margin-top:12px" id="signout">Switch role / sign out</button>`;
-    $("#lang").value = state.language;
-    $("#lang").onchange = () => { state.language = $("#lang").value; persist(); toast("Language saved."); };
-    $("#signout").onclick = () => {
-      if (engine) engine.stop();
-      stopCamera();
-      user = null;
-      $("#chip-live").classList.add("hidden");
-      show("login");
-    };
+    ensureUser();
+    $("#account-body").innerHTML =
+      '<div class="hero"><p class="kicker">Account</p><h2>' + user.name + "</h2><p>" + user.title + "</p></div>" +
+      '<div class="card" style="margin-top:12px"><div class="toggle"><span>Role</span><b>' + user.role + "</b></div></div>" +
+      '<p class="muted" style="margin:14px 2px 8px">Switch demo role</p>' +
+      '<div class="grid roles" style="margin-top:0">' +
+      '<button class="role" data-role="host" type="button"><div class="avatar" style="background:#2ee6c833;color:#2ee6c8">AH</div><div><h3>Dr. Amal Hassan</h3><p>Faculty / Meeting Host</p></div></button>' +
+      '<button class="role" data-role="attendee" type="button"><div class="avatar" style="background:#4cc9f033;color:#4cc9f0">JL</div><div><h3>Jordan Lee</h3><p>Student / Attendee</p></div></button>' +
+      '<button class="role" data-role="admin" type="button"><div class="avatar" style="background:#f4b94233;color:#f4b942">SQ</div><div><h3>Samir Qureshi</h3><p>IT and AV</p></div></button>' +
+      '<button class="role" data-role="compliance" type="button"><div class="avatar" style="background:#a78bfa33;color:#a78bfa">EV</div><div><h3>Elena Voss</h3><p>Compliance and Legal</p></div></button></div>';
   }
 
-  function wire() {
-    $$("[data-role]").forEach((b) => b.addEventListener("click", () => login(b.dataset.role)));
-    document.body.addEventListener("click", (e) => {
-      const act = e.target.closest("[data-act]") && e.target.closest("[data-act]").dataset.act;
-      const go = e.target.closest("[data-go]") && e.target.closest("[data-go]").dataset.go;
-      const open = e.target.closest("[data-open]") && e.target.closest("[data-open]").dataset.open;
-      if (act === "start") startSession();
-      if (act === "reports") {
-        renderReport(state.sessions[0] || { report: null, title: "No report", transcript: [] });
-        show("report");
-      }
-      if (act === "admin") { renderAdmin(); show("admin"); }
-      if (act === "legal") { renderCompliance(); show("compliance"); }
-      if (go && user) {
-        if (go === "home") renderHome();
-        if (go === "live" && !engine) startSession();
-        else if (go === "live") show("live");
-        if (go === "report") { renderReport(state.sessions[0] || { report: null, title: "No report", transcript: [] }); show("report"); }
-        if (go === "account") { renderAccount(); show("account"); }
-        if (go === "admin") { renderAdmin(); show("admin"); }
-        if (go === "compliance") { renderCompliance(); show("compliance"); }
-      }
-      if (open) {
-        const s = state.sessions.find((x) => x.id === open);
-        if (s) { renderReport(s); show("report"); }
-      }
-    });
-    $("#btn-end").addEventListener("click", endSession);
-    $("#btn-hand").addEventListener("click", () => {
-      engine && engine.raiseHand(user && user.id === "u-jordan" ? "p-jordan" : "p-maya");
-    });
-    $("#speed").addEventListener("change", (e) => engine && engine.setSpeed(Number(e.target.value)));
-    $("#grant-consent").addEventListener("click", () => {
-      state.consent = true;
-      state.recordConsentedMedia = $("#consent-record").checked;
-      persist();
-      $("#modal-consent").classList.remove("open");
-      startSession();
-    });
-    $("#deny-consent").addEventListener("click", () => {
-      $("#modal-consent").classList.remove("open");
-      toast("Capture blocked — consent token missing.");
-    });
-    $("#btn-mic").addEventListener("click", toggleSpeech);
+  function handleClick(e) {
+    const roleBtn = e.target.closest("[data-role]");
+    if (roleBtn) { login(roleBtn.getAttribute("data-role")); return; }
+    const actBtn = e.target.closest("[data-act]");
+    const act = actBtn && actBtn.getAttribute("data-act");
+    const goBtn = e.target.closest("[data-go]");
+    const dest = goBtn && goBtn.getAttribute("data-go");
+    const openBtn = e.target.closest("[data-open]");
+    const open = openBtn && openBtn.getAttribute("data-open");
+    if (act === "start") startSession();
+    if (act === "reports") go("report");
+    if (act === "admin") go("admin");
+    if (act === "legal") go("compliance");
+    if (dest) go(dest);
+    if (open) {
+      const s = state.sessions.find(function (x) { return x.id === open; });
+      if (s) { renderReport(s); show("report"); }
+    }
   }
 
   function toggleSpeech() {
@@ -265,7 +299,7 @@
     recognition.continuous = true;
     recognition.interimResults = true;
     recognition.lang = "en-US";
-    recognition.onresult = (ev) => {
+    recognition.onresult = function (ev) {
       let text = "";
       for (let i = ev.resultIndex; i < ev.results.length; i++) text += ev.results[i][0].transcript;
       if (text.trim() && engine && engine.session) {
@@ -273,17 +307,41 @@
         $("#caption-text").textContent = text.trim();
       }
     };
-    recognition.onend = () => { recognizing = false; };
+    recognition.onend = function () { recognizing = false; };
     recognition.start();
     recognizing = true;
     $("#btn-mic").textContent = "Stop mic";
     toast("Device speech recognition on.");
   }
 
+  document.body.addEventListener("click", handleClick);
+  $("#btn-end").addEventListener("click", endSession);
+  $("#btn-hand").addEventListener("click", function () {
+    if (engine) engine.raiseHand(user && user.id === "u-jordan" ? "p-jordan" : "p-maya");
+  });
+  $("#speed").addEventListener("change", function (e) {
+    if (engine) engine.setSpeed(Number(e.target.value));
+  });
+  $("#grant-consent").addEventListener("click", function () {
+    state.consent = true;
+    state.recordConsentedMedia = $("#consent-record").checked;
+    persist();
+    $("#modal-consent").classList.remove("open");
+    startSession();
+  });
+  $("#deny-consent").addEventListener("click", function () {
+    $("#modal-consent").classList.remove("open");
+    toast("Capture blocked. You can still browse Home, Report and Account.");
+  });
+  $("#btn-mic").addEventListener("click", toggleSpeech);
+  $("#who-chip").addEventListener("click", function () { go("account"); });
+
   if ("serviceWorker" in navigator) {
-    navigator.serviceWorker.register("./sw.js").catch(() => {});
+    navigator.serviceWorker.register("./sw.js").catch(function () {});
   }
 
-  wire();
-  show("login");
+  window.ACMA = { go: go, login: login };
+  ensureUser(state.userRole || "host");
+  renderHome();
+  show("home");
 })();
