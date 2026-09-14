@@ -41,12 +41,11 @@
         </nav>
       </div>
     </header>
-
     <section id="screen-auth" class="screen active">
       <div class="hero">
         <p class="kicker">Accounts and rooms</p>
         <h2>Create an account. Open a room. Share the code.</h2>
-        <p>Any person can register. The host creates a room, then everyone else joins with the 6-character code.</p>
+        <p>Any person can register. The host creates a room, then everyone else joins with the 6-character code from any device.</p>
       </div>
       <div class="card auth-card">
         <div class="tabs-mini">
@@ -68,7 +67,6 @@
         </form>
       </div>
     </section>
-
     <section id="screen-home" class="screen">
       <div id="home-hero" class="hero"></div>
       <div class="grid" style="margin-top:14px">
@@ -95,12 +93,11 @@
       <h3 style="margin:18px 2px 8px;font-size:0.95rem">Your rooms</h3>
       <div id="home-rooms" class="grid"></div>
     </section>
-
     <section id="screen-room" class="screen">
       <div class="hero">
         <p class="kicker" id="room-meta">Room</p>
         <h2 id="room-title">Room</h2>
-        <p>Share this code so others can join.</p>
+        <p>Share this code so others can join from another phone or PC.</p>
         <div class="code-pill" id="room-code">------</div>
         <div class="row" style="margin-top:12px">
           <button class="btn sm" id="btn-copy-code" type="button">Copy code</button>
@@ -120,7 +117,6 @@
         </div>
       </div>
     </section>
-
     <section id="screen-live" class="screen">
       <div class="row space" style="margin-bottom:10px">
         <div>
@@ -158,20 +154,18 @@
         </div>
       </div>
     </section>
-
     <section id="screen-report" class="screen"><div id="report-body"></div></section>
     <section id="screen-account" class="screen"><div id="account-body"></div></section>
   </div>
-
   <nav class="tabbar need-auth hidden">
     <button data-go="home" class="active" type="button">Home</button>
     <button data-go="room" type="button">Room</button>
     <button data-go="live" type="button">Live</button>
     <button data-go="account" type="button">Account</button>
   </nav>
-
   <div id="toast" class="toast"></div>
-  <script src="./js/store.js"></script>
-  <script src="./js/app.js?v=5"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mqtt@5/dist/mqtt.min.js"></script>
+  <script src="./js/store.js?v=6"></script>
+  <script src="./js/app.js?v=6"></script>
 </body>
 </html>
