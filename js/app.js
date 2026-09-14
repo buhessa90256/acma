@@ -6,12 +6,21 @@
   let mediaStream = null;
   const screens = ["auth", "home", "room", "live", "report", "account"];
 
+  if (navigator.serviceWorker) {
+    navigator.serviceWorker.getRegistrations().then(function (regs) {
+      regs.forEach(function (r) { r.unregister(); });
+    });
+  }
+  if (window.caches) {
+    caches.keys().then(function (keys) { keys.forEach(function (k) { caches.delete(k); }); });
+  }
+
   function toast(msg) {
     const el = $("#toast");
     if (!el) return;
     el.textContent = msg;
     el.classList.add("show");
-    setTimeout(function () { el.classList.remove("show"); }, 2600);
+    setTimeout(function () { el.classList.remove("show"); }, 2800);
   }
 
   function show(name) {
@@ -115,14 +124,15 @@
     renderRoom(); show("room");
   }
 
-  function createRoom() {
-    $("#create-err").textContent = "";
+  async function createRoom() {
+    $("#create-err").textContent = "Publishing room online...";
     try {
-      const created = ACMA_STORE.createRoom($("#room-name").value, $("#room-topic").value);
+      const created = await ACMA_STORE.createRoom($("#room-name").value, $("#room-topic").value);
       bindRoom(created);
       $("#room-name").value = ""; $("#room-topic").value = "";
+      $("#create-err").textContent = "";
       renderRoom(); show("room");
-      toast("Room created. Share code " + room.code);
+      toast("Room published. Share code " + room.code);
     } catch (err) { $("#create-err").textContent = err.message; }
   }
 
@@ -204,9 +214,7 @@
       const stamp = String(t.getHours()).padStart(2, "0") + ":" + String(t.getMinutes()).padStart(2, "0");
       return '<div class="line"><time>' + stamp + '</time><div><span class="spk">' + msg.name + "</span> " + escapeHtml(msg.text) + "</div></div>";
     }).join("") || '<p class="muted">Live transcript is empty.</p>';
-    $("#json-live").textContent = JSON.stringify({ timestamp: new Date().toISOString(), room_code: room.code, members: room.members.map(function (m) { return m.name; }), live: room.live }, null, 2);
     $("#att-val").textContent = room.members.length;
-    $("#att-bar").style.width = Math.min(100, room.members.length * 18) + "%";
     $("#hands-val").textContent = (room.hands || []).length;
     $("#int-val").textContent = (room.messages || []).length;
     $("#db-val").textContent = room.live ? "on" : "off";
@@ -245,9 +253,7 @@
       '<div class="hero"><p class="kicker">Session report</p><h2>' + target.name + "</h2><p>" + target.code + " \u00b7 " + target.members.length + " members</p></div>" +
       '<section class="card report" style="margin-top:12px"><h3>Who spoke</h3><ul>' +
       (ranked.length ? ranked.map(function (n) { return "<li>" + n + " \u2014 " + speakers[n] + " turns</li>"; }).join("") : "<li>No speakers yet.</li>") +
-      '</ul></section><section class="card"><h3>Transcript</h3><div class="list" style="max-height:360px;margin-top:8px">' +
-      (target.messages || []).map(function (msg) { return '<div class="line"><time></time><div><span class="spk">' + msg.name + "</span> " + escapeHtml(msg.text) + "</div></div>"; }).join("") +
-      "</div></section>";
+      "</ul></section>";
   }
 
   function renderAccount() {
@@ -255,12 +261,10 @@
     if (!user) { show("auth"); return; }
     $("#account-body").innerHTML =
       '<div class="hero"><p class="kicker">Account</p><h2>' + user.name + "</h2><p>" + user.email + "</p></div>" +
-      '<div class="card" style="margin-top:12px"><div class="toggle"><span>Rooms</span><b>' + ACMA_STORE.myRooms().length + "</b></div></div>" +
       '<button class="btn ghost full" style="margin-top:12px" id="signout" type="button">Sign out</button>';
     $("#signout").onclick = function () {
       stopCamera(); ACMA_STORE.logout(); user = null; room = null;
-      $("#chip-live").classList.add("hidden"); $("#who-chip").textContent = "Sign in";
-      show("auth"); toast("Signed out.");
+      $("#who-chip").textContent = "Sign in"; show("auth"); toast("Signed out.");
     };
   }
 
@@ -284,8 +288,7 @@
 
   function toggleSpeech() {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SR) { toast("Type notes if speech recognition is unavailable."); return; }
-    if (!room) { toast("Open a room first."); return; }
+    if (!SR || !room) { toast("Type notes into the room thread."); return; }
     const rec = new SR();
     rec.lang = "en-US"; rec.interimResults = false;
     rec.onresult = function (ev) {
@@ -323,7 +326,6 @@
     if (!room) return; ACMA_STORE.leaveRoom(room.id); room = null; renderHome(); show("home"); toast("Left the room.");
   });
 
-  if ("serviceWorker" in navigator) navigator.serviceWorker.register("./sw.js").catch(function () {});
   window.ACMA = { go: go };
   refreshUser();
   setAuthMode("register");
