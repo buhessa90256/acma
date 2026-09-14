@@ -2,6 +2,7 @@
   const USERS_KEY = "acma-users-v1";
   const ROOMS_KEY = "acma-rooms-v1";
   const AUTH_KEY = "acma-auth-v1";
+  const ROOM_TOPIC = "acma/v1/room/";
 
   function load(key, fallback) {
     try { return JSON.parse(localStorage.getItem(key) || "null") || fallback; }
@@ -40,8 +41,80 @@
     if (!id) return null;
     return users().find(function (u) { return u.id === id; }) || null;
   }
-
   function setCurrent(id) { save(AUTH_KEY, id); }
+  function publicUser(u) {
+    return { id: u.id, name: u.name, email: u.email, initials: initials(u.name), createdAt: u.createdAt };
+  }
+
+  let mqttClient = null;
+  const watchers = {};
+
+  function bus() {
+    if (mqttClient) return mqttClient;
+    if (typeof mqtt === "undefined") return null;
+    mqttClient = mqtt.connect("wss://broker.emqx.io:8084/mqtt", {
+      clientId: "acma-" + Math.random().toString(16).slice(2, 10),
+      clean: true,
+      connectTimeout: 8000,
+      reconnectPeriod: 2000
+    });
+    mqttClient.on("message", function (topic, payload) {
+      const code = String(topic || "").replace(ROOM_TOPIC, "");
+      let room;
+      try { room = JSON.parse(payload.toString()); } catch (e) { return; }
+      if (!room || !room.code) return;
+      upsertLocal(room);
+      if (watchers[code]) watchers[code].forEach(function (fn) { fn(room); });
+    });
+    return mqttClient;
+  }
+
+  function publishRoom(room) {
+    const c = bus();
+    if (!c || !room || !room.code) return;
+    c.publish(ROOM_TOPIC + room.code, JSON.stringify(room), { retain: true, qos: 1 });
+  }
+
+  function subscribeRoom(code) {
+    const c = bus();
+    if (!c || !code) return;
+    c.subscribe(ROOM_TOPIC + code, { qos: 1 });
+  }
+
+  function fetchRemote(code) {
+    code = String(code || "").trim().toUpperCase();
+    return new Promise(function (resolve, reject) {
+      const c = bus();
+      if (!c) { reject(new Error("Network sync is not ready. Refresh and try again.")); return; }
+      const topic = ROOM_TOPIC + code;
+      let done = false;
+      function finish(err, room) {
+        if (done) return;
+        done = true;
+        c.removeListener("message", onMsg);
+        if (err) reject(err); else resolve(room);
+      }
+      function onMsg(topicGot, payload) {
+        if (topicGot !== topic) return;
+        try { finish(null, JSON.parse(payload.toString())); }
+        catch (e) { finish(new Error("No room uses that code.")); }
+      }
+      c.on("message", onMsg);
+      const sub = function () { c.subscribe(topic, { qos: 1 }); };
+      if (c.connected) sub(); else c.once("connect", sub);
+      setTimeout(function () {
+        finish(new Error("No room uses that code. Ask the host to keep ACMA open, then join again."));
+      }, 6000);
+    });
+  }
+
+  function upsertLocal(room) {
+    const all = rooms();
+    const idx = all.findIndex(function (r) { return r.code === room.code || r.id === room.id; });
+    if (idx >= 0) all[idx] = room; else all.unshift(room);
+    setRooms(all);
+    return room;
+  }
 
   async function register(name, email, password) {
     name = String(name || "").trim();
@@ -52,16 +125,8 @@
     if (password.length < 6) throw new Error("Password must be at least 6 characters.");
     const all = users();
     if (all.some(function (u) { return u.email === email; })) throw new Error("An account with this email already exists.");
-    const user = {
-      id: uid("u"),
-      name: name,
-      email: email,
-      pass: await hashPass(email, password),
-      createdAt: new Date().toISOString()
-    };
-    all.push(user);
-    setUsers(all);
-    setCurrent(user.id);
+    const user = { id: uid("u"), name: name, email: email, pass: await hashPass(email, password), createdAt: new Date().toISOString() };
+    all.push(user); setUsers(all); setCurrent(user.id);
     return publicUser(user);
   }
 
@@ -77,10 +142,6 @@
 
   function logout() { localStorage.removeItem(AUTH_KEY); }
 
-  function publicUser(u) {
-    return { id: u.id, name: u.name, email: u.email, initials: initials(u.name), createdAt: u.createdAt };
-  }
-
   function createRoom(name, topic) {
     const me = current();
     if (!me) throw new Error("Sign in first.");
@@ -90,20 +151,13 @@
     const all = rooms();
     while (all.some(function (r) { return r.code === code; })) code = roomCode();
     const room = {
-      id: uid("r"),
-      code: code,
-      name: name,
-      topic: String(topic || "").trim(),
-      hostId: me.id,
-      createdAt: new Date().toISOString(),
-      status: "open",
-      members: [{ userId: me.id, role: "host", joinedAt: new Date().toISOString() }],
-      messages: [],
-      hands: [],
-      live: false
+      id: uid("r"), code: code, name: name, topic: String(topic || "").trim(),
+      hostId: me.id, hostName: me.name, createdAt: new Date().toISOString(), status: "open",
+      members: [{ userId: me.id, role: "host", name: me.name, email: me.email, initials: initials(me.name), joinedAt: new Date().toISOString() }],
+      messages: [], hands: [], live: false
     };
-    all.unshift(room);
-    setRooms(all);
+    all.unshift(room); setRooms(all);
+    subscribeRoom(room.code); publishRoom(room);
     return room;
   }
 
@@ -111,7 +165,6 @@
     code = String(code || "").trim().toUpperCase().replace(/\s+/g, "");
     return rooms().find(function (r) { return r.code === code; }) || null;
   }
-
   function getRoom(id) { return rooms().find(function (r) { return r.id === id; }) || null; }
 
   function updateRoom(id, mutator) {
@@ -120,18 +173,25 @@
     if (idx < 0) throw new Error("Room not found.");
     mutator(all[idx]);
     setRooms(all);
+    publishRoom(all[idx]);
     return all[idx];
   }
 
-  function joinRoom(code) {
+  async function joinRoom(code) {
     const me = current();
     if (!me) throw new Error("Sign in first.");
-    const room = findRoomByCode(code);
-    if (!room) throw new Error("No room uses that code.");
-    if (room.status === "closed") throw new Error("This room is closed.");
+    code = String(code || "").trim().toUpperCase().replace(/\s+/g, "");
+    let room = findRoomByCode(code);
+    if (!room) {
+      room = await fetchRemote(code);
+      if (!room || !room.code) throw new Error("No room uses that code.");
+      upsertLocal(room);
+    }
+    subscribeRoom(room.code);
     return updateRoom(room.id, function (r) {
-      if (!r.members.some(function (m) { return m.userId === me.id; })) {
-        r.members.push({ userId: me.id, role: "attendee", joinedAt: new Date().toISOString() });
+      const exists = r.members.some(function (m) { return m.userId === me.id || m.email === me.email; });
+      if (!exists) {
+        r.members.push({ userId: me.id, role: "attendee", name: me.name, email: me.email, initials: initials(me.name), joinedAt: new Date().toISOString() });
       }
     });
   }
@@ -148,7 +208,9 @@
   function myRooms() {
     const me = current();
     if (!me) return [];
-    return rooms().filter(function (r) { return r.members.some(function (m) { return m.userId === me.id; }); });
+    return rooms().filter(function (r) {
+      return r.members.some(function (m) { return m.userId === me.id || m.email === me.email; });
+    });
   }
 
   function addMessage(roomId, text) {
@@ -164,8 +226,7 @@
     const me = current();
     return updateRoom(roomId, function (r) {
       const i = r.hands.indexOf(me.id);
-      if (i >= 0) r.hands.splice(i, 1);
-      else r.hands.push(me.id);
+      if (i >= 0) r.hands.splice(i, 1); else r.hands.push(me.id);
     });
   }
 
@@ -175,38 +236,33 @@
 
   function populated(room) {
     if (!room) return null;
-    const all = users();
     return Object.assign({}, room, {
-      members: room.members.map(function (m) {
-        const u = all.find(function (x) { return x.id === m.userId; });
+      members: (room.members || []).map(function (m) {
         return {
           userId: m.userId,
           role: m.userId === room.hostId ? "host" : (m.role || "attendee"),
           joinedAt: m.joinedAt,
-          name: u ? u.name : "Unknown member",
-          email: u ? u.email : "",
-          initials: initials(u ? u.name : "?")
+          name: m.name || "Member",
+          email: m.email || "",
+          initials: m.initials || initials(m.name || "?")
         };
       })
     });
   }
 
+  function watch(code, fn) {
+    if (!watchers[code]) watchers[code] = [];
+    watchers[code].push(fn);
+    subscribeRoom(code);
+    return function () { watchers[code] = (watchers[code] || []).filter(function (x) { return x !== fn; }); };
+  }
+
+  bus();
+
   global.ACMA_STORE = {
-    current: current,
-    publicUser: publicUser,
-    register: register,
-    login: login,
-    logout: logout,
-    createRoom: createRoom,
-    joinRoom: joinRoom,
-    leaveRoom: leaveRoom,
-    findRoomByCode: findRoomByCode,
-    getRoom: getRoom,
-    myRooms: myRooms,
-    addMessage: addMessage,
-    toggleHand: toggleHand,
-    setLive: setLive,
-    populated: populated,
-    initials: initials
+    current: current, publicUser: publicUser, register: register, login: login, logout: logout,
+    createRoom: createRoom, joinRoom: joinRoom, leaveRoom: leaveRoom, findRoomByCode: findRoomByCode,
+    getRoom: getRoom, myRooms: myRooms, addMessage: addMessage, toggleHand: toggleHand, setLive: setLive,
+    populated: populated, initials: initials, watch: watch, publishRoom: publishRoom
   };
 })(window);
