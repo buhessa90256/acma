@@ -1,32 +1,17 @@
 (function () {
   const $ = (sel, root) => (root || document).querySelector(sel);
   const $$ = (sel, root) => Array.prototype.slice.call((root || document).querySelectorAll(sel));
-  const state = ACMA_ENGINE.loadState();
   let user = null;
-  let engine = null;
+  let room = null;
   let mediaStream = null;
-  let recognizing = false;
-  let recognition = null;
-  const screens = ["login", "home", "live", "report", "admin", "compliance", "account"];
+  const screens = ["auth", "home", "room", "live", "report", "account"];
 
   function toast(msg) {
     const el = $("#toast");
     if (!el) return;
     el.textContent = msg;
     el.classList.add("show");
-    setTimeout(function () { el.classList.remove("show"); }, 2800);
-  }
-
-  function persist() { ACMA_ENGINE.saveState(state); }
-
-  function ensureUser(role) {
-    const key = role || state.userRole || "host";
-    user = Object.assign({}, ACMA_DATA.users[key] || ACMA_DATA.users.host);
-    state.userRole = user.role;
-    persist();
-    const chip = $("#who-chip");
-    if (chip) chip.textContent = (user.short || user.name) + " \u00b7 " + user.role;
-    return user;
+    setTimeout(function () { el.classList.remove("show"); }, 2600);
   }
 
   function show(name) {
@@ -37,66 +22,106 @@
     $$(".tabbar button, .desk-nav button").forEach(function (b) {
       b.classList.toggle("active", b.getAttribute("data-go") === name);
     });
+    $$(".need-auth").forEach(function (el) { el.classList.toggle("hidden", !user); });
     window.scrollTo(0, 0);
   }
 
-  function go(name) {
-    ensureUser();
-    if (name === "home") { renderHome(); show("home"); return; }
-    if (name === "live") { show("live"); if (!engine) startSession(); return; }
-    if (name === "report") { renderReport(state.sessions[0] || { report: null, title: "No report", transcript: [] }); show("report"); return; }
-    if (name === "account") { renderAccount(); show("account"); return; }
-    if (name === "admin") { renderAdmin(); show("admin"); return; }
-    if (name === "compliance") { renderCompliance(); show("compliance"); return; }
-    if (name === "login") show("login");
+  function refreshUser() {
+    const raw = ACMA_STORE.current();
+    user = raw ? ACMA_STORE.publicUser(raw) : null;
+    const chip = $("#who-chip");
+    if (chip) chip.textContent = user ? user.name : "Sign in";
+    return user;
   }
 
-  function login(role) {
-    ensureUser(role);
-    renderHome();
-    show("home");
-    toast("Signed in as " + user.title);
+  function go(name) {
+    refreshUser();
+    if (!user && name !== "auth") { show("auth"); toast("Create an account or sign in first."); return; }
+    if (name === "home") { renderHome(); show("home"); return; }
+    if (name === "room") {
+      if (!room) { renderHome(); show("home"); toast("Open or join a room first."); return; }
+      renderRoom(); show("room"); return;
+    }
+    if (name === "live") {
+      if (!room) { renderHome(); show("home"); toast("Join a room to go live."); return; }
+      renderLive(); show("live"); return;
+    }
+    if (name === "report") { renderReport(); show("report"); return; }
+    if (name === "account") { renderAccount(); show("account"); return; }
+    if (name === "auth") show("auth");
+  }
+
+  function setAuthMode(mode) {
+    $("#auth-register") && $("#form-register").classList.toggle("hidden", mode !== "register");
+    $("#form-login").classList.toggle("hidden", mode !== "login");
+    $$("[data-auth]").forEach(function (b) { b.classList.toggle("active", b.getAttribute("data-auth") === mode); });
+  }
+
+  async function onRegister(e) {
+    e.preventDefault();
+    $("#reg-err").textContent = "";
+    try {
+      user = await ACMA_STORE.register($("#reg-name").value, $("#reg-email").value, $("#reg-pass").value);
+      refreshUser(); renderHome(); show("home");
+      toast("Account created. Welcome, " + user.name + ".");
+    } catch (err) { $("#reg-err").textContent = err.message; }
+  }
+
+  async function onLogin(e) {
+    e.preventDefault();
+    $("#login-err").textContent = "";
+    try {
+      user = await ACMA_STORE.login($("#login-email").value, $("#login-pass").value);
+      refreshUser(); renderHome(); show("home");
+      toast("Signed in as " + user.name + ".");
+    } catch (err) { $("#login-err").textContent = err.message; }
   }
 
   function renderHome() {
-    ensureUser();
-    const first = user.short || user.name;
-    let blurb = "Review consent posture and classroom capture rules.";
-    if (user.role === "host") blurb = "Start an assisted session for Hall 402-B.";
-    else if (user.role === "attendee") blurb = "Join the live room to follow captions and raise a hand.";
-    else if (user.role === "admin") blurb = "Confirm A/V endpoints and retention defaults.";
-    $("#home-hero").innerHTML = '<p class="kicker">' + user.title + "</p><h2>Good day, " + first + ".</h2><p>" + blurb + "</p>";
-    const last = state.sessions[0];
-    const acc = last && last.report && last.report.speakerAccuracy ? last.report.speakerAccuracy : "-";
-    $("#home-stats").innerHTML =
-      '<div class="card stat"><div class="val">' + state.sessions.length + '</div><div class="lbl">Stored sessions</div></div>' +
-      '<div class="card stat"><div class="val">' + (state.consent ? "On" : "Off") + '</div><div class="lbl">Capture consent</div></div>' +
-      '<div class="card stat"><div class="val">' + state.retentionDays + 'd</div><div class="lbl">Retention window</div></div>' +
-      '<div class="card stat"><div class="val">' + acc + '</div><div class="lbl">Last ID accuracy</div></div>';
-    let extra = "";
-    if (user.role === "admin") extra += '<button class="btn ghost" data-act="admin" type="button">A/V and retention</button>';
-    if (user.role === "compliance") extra += '<button class="btn ghost" data-act="legal" type="button">Compliance desk</button>';
-    $("#home-actions").innerHTML =
-      '<button class="btn full" data-act="start" type="button">' + (user.role === "attendee" ? "Join live session" : "Run assisted session") + "</button>" +
-      '<div class="row" style="margin-top:10px"><button class="btn ghost" data-act="reports" type="button">Session reports</button>' + extra + "</div>";
-    const list = state.sessions.slice(0, 5).map(function (s) {
-      return '<button class="card" style="text-align:left;width:100%" data-open="' + s.id + '" type="button"><h3>' + s.title + '</h3><p class="muted">' + s.code + " \u00b7 " + s.room + " \u00b7 " + s.status + "</p></button>";
+    refreshUser();
+    if (!user) { show("auth"); return; }
+    $("#home-hero").innerHTML = '<p class="kicker">Your workspace</p><h2>Hello, ' + user.name.split(" ")[0] + '.</h2><p>Create a room, then share the code so others can join.</p>';
+    const list = ACMA_STORE.myRooms().map(function (r) {
+      const p = ACMA_STORE.populated(r);
+      const role = r.hostId === user.id ? "Host" : "Member";
+      return '<button class="card" type="button" data-open-room="' + r.id + '" style="text-align:left;width:100%"><h3>' + r.name + '</h3><p class="muted">' + r.code + " \u00b7 " + role + " \u00b7 " + p.members.length + " members \u00b7 " + r.status + "</p></button>";
     }).join("");
-    $("#home-sessions").innerHTML = list || '<div class="card muted">No finalized sessions yet.</div>';
+    $("#home-rooms").innerHTML = list || '<div class="card muted">No rooms yet. Create one or join with a code.</div>';
   }
 
-  function renderFaces(session) {
-    $("#faces").innerHTML = ACMA_DATA.participants.map(function (p) {
-      const on = session.activeSpeaker === p.id;
-      const hand = session.raisedHands.indexOf(p.id) !== -1;
-      return '<div class="face ' + (on ? "on" : "") + '"><div class="dot" style="background:' + p.color + "33;color:" + p.color + '">' + p.initials + "</div><b>" + p.name.split(" ").pop() + '</b><span class="muted">' + (on ? "speaking" : hand ? "hand" : p.role) + "</span></div>";
-    }).join("");
+  function openRoom(id) {
+    const found = ACMA_STORE.getRoom(id);
+    if (!found) { toast("Room not found."); return; }
+    room = ACMA_STORE.populated(found);
+    renderRoom(); show("room");
   }
 
-  function fmtT(sec) {
-    const m = Math.floor(sec / 60);
-    const s = Math.floor(sec % 60);
-    return String(m).padStart(2, "0") + ":" + String(s).padStart(2, "0");
+  function createRoom() {
+    $("#create-err").textContent = "";
+    try {
+      const created = ACMA_STORE.createRoom($("#room-name").value, $("#room-topic").value);
+      room = ACMA_STORE.populated(created);
+      $("#room-name").value = ""; $("#room-topic").value = "";
+      renderRoom(); show("room");
+      toast("Room created. Share code " + room.code);
+    } catch (err) { $("#create-err").textContent = err.message; }
+  }
+
+  function joinByCode() {
+    $("#join-err").textContent = "";
+    try {
+      const joined = ACMA_STORE.joinRoom($("#join-code").value);
+      room = ACMA_STORE.populated(joined);
+      $("#join-code").value = "";
+      renderRoom(); show("room");
+      toast("Joined " + room.name);
+    } catch (err) { $("#join-err").textContent = err.message; }
+  }
+
+  function reloadRoom() {
+    if (!room) return null;
+    room = ACMA_STORE.populated(ACMA_STORE.getRoom(room.id));
+    return room;
   }
 
   function escapeHtml(s) {
@@ -105,54 +130,117 @@
     return box.innerHTML;
   }
 
-  function renderTick(session, obj) {
-    $("#att-val").textContent = Math.round(session.liveAttention * 100) + "%";
-    $("#att-bar").style.width = session.liveAttention * 100 + "%";
-    $("#db-val").textContent = Math.round(session.liveDb) + " dB";
-    $("#db-bar").style.width = Math.min(100, (session.liveDb / 90) * 100) + "%";
-    $("#db-meter").classList.toggle("hot", session.liveDb >= 70);
-    $("#int-val").textContent = session.interruptions;
-    $("#hands-val").textContent = session.raisedHands.length;
-    const last = session.transcript[session.transcript.length - 1];
-    if (last) {
-      $("#caption-who").textContent = last.speaker + " \u00b7 bound via AV fusion";
-      $("#caption-text").textContent = last.text;
-    }
-    $("#json-live").textContent = JSON.stringify(obj, null, 2);
-    $("#transcript").innerHTML = session.transcript.slice().reverse().map(function (line) {
-      return '<div class="line"><time>' + fmtT(line.t) + '</time><div><span class="spk">' + line.speaker + "</span> " + escapeHtml(line.text) + "</div></div>";
+  function renderRoom() {
+    reloadRoom();
+    if (!room) { renderHome(); show("home"); return; }
+    const host = room.members.find(function (m) { return m.role === "host"; });
+    $("#room-title").textContent = room.name;
+    $("#room-meta").textContent = (room.topic || "No topic") + " \u00b7 hosted by " + (host ? host.name : "-");
+    $("#room-code").textContent = room.code;
+    $("#room-status").textContent = room.live ? "LIVE" : String(room.status).toUpperCase();
+    $("#room-members").innerHTML = room.members.map(function (m) {
+      const hand = room.hands.indexOf(m.userId) !== -1;
+      return '<div class="member"><div class="avatar" style="background:#2ee6c833;color:#2ee6c8">' + m.initials + "</div><div><b>" + m.name + '</b><p class="muted">' + m.role + (hand ? " \u00b7 hand raised" : "") + "</p></div></div>";
     }).join("");
-    renderFaces(session);
-    $("#live-status").textContent = session.pipeline === "ready" ? "LIVE" : String(session.pipeline).toUpperCase();
+    $("#room-chat").innerHTML = room.messages.slice(-40).map(function (msg) {
+      const t = new Date(msg.at);
+      const stamp = String(t.getHours()).padStart(2, "0") + ":" + String(t.getMinutes()).padStart(2, "0");
+      return '<div class="line"><time>' + stamp + '</time><div><span class="spk">' + msg.name + "</span> " + escapeHtml(msg.text) + "</div></div>";
+    }).join("") || '<p class="muted">No messages yet.</p>';
   }
 
-  function onEngineEvent(type, payload) {
-    if (type === "interrupt") toast("Cross-talk flagged \u00b7 " + payload.speaker);
-    if (type === "hand") toast("Raised hand \u00b7 " + payload.participant.name);
-    if (type === "pipeline") toast(payload.message);
+  function sendMessage() {
+    if (!room) return;
+    try {
+      ACMA_STORE.addMessage(room.id, $("#chat-text").value);
+      $("#chat-text").value = "";
+      renderRoom();
+      if ($("#screen-live").classList.contains("active")) renderLive();
+    } catch (err) { toast(err.message); }
   }
 
-  function startSession() {
-    ensureUser();
-    if (!state.consent) {
-      show("live");
-      $("#modal-consent").classList.add("open");
+  function copyCode() {
+    if (!room) return;
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(room.code).then(function () { toast("Code copied: " + room.code); });
+    else toast(room.code);
+  }
+
+  function renderLive() {
+    reloadRoom();
+    if (!room) return;
+    $("#session-code").textContent = room.code;
+    $("#session-title").textContent = room.name;
+    $("#live-status").textContent = room.live ? "LIVE" : "STANDBY";
+    $("#faces").innerHTML = room.members.map(function (m) {
+      const hand = room.hands.indexOf(m.userId) !== -1;
+      return '<div class="face"><div class="dot" style="background:#2ee6c833;color:#2ee6c8">' + m.initials + "</div><b>" + m.name.split(" ")[0] + '</b><span class="muted">' + (hand ? "hand" : m.role) + "</span></div>";
+    }).join("");
+    const last = room.messages[room.messages.length - 1];
+    $("#caption-who").textContent = last ? last.name + " \u00b7 room feed" : "Waiting";
+    $("#caption-text").textContent = last ? last.text : "Type a note or use Host mic.";
+    $("#transcript").innerHTML = room.messages.slice().reverse().slice(0, 30).map(function (msg) {
+      const t = new Date(msg.at);
+      const stamp = String(t.getHours()).padStart(2, "0") + ":" + String(t.getMinutes()).padStart(2, "0");
+      return '<div class="line"><time>' + stamp + '</time><div><span class="spk">' + msg.name + "</span> " + escapeHtml(msg.text) + "</div></div>";
+    }).join("") || '<p class="muted">Live transcript is empty.</p>';
+    $("#json-live").textContent = JSON.stringify({ timestamp: new Date().toISOString(), room_code: room.code, members: room.members.map(function (m) { return m.name; }), live: room.live }, null, 2);
+    $("#att-val").textContent = room.members.length;
+    $("#att-bar").style.width = Math.min(100, room.members.length * 18) + "%";
+    $("#hands-val").textContent = room.hands.length;
+    $("#int-val").textContent = room.messages.length;
+    $("#db-val").textContent = room.live ? "on" : "off";
+  }
+
+  function startLive() {
+    if (!room) return;
+    ACMA_STORE.setLive(room.id, true);
+    reloadRoom(); renderLive(); show("live");
+    $("#chip-live").classList.remove("hidden");
+    tryCamera();
+    toast("Room is live.");
+  }
+
+  function endLive() {
+    if (!room) return;
+    ACMA_STORE.setLive(room.id, false);
+    stopCamera();
+    $("#chip-live").classList.add("hidden");
+    reloadRoom(); renderReport(); show("report");
+    toast("Session closed. Minutes built from the room thread.");
+  }
+
+  function renderReport() {
+    refreshUser();
+    const rooms = user ? ACMA_STORE.myRooms() : [];
+    const target = room ? ACMA_STORE.populated(ACMA_STORE.getRoom(room.id)) : (rooms[0] ? ACMA_STORE.populated(rooms[0]) : null);
+    if (!target) {
+      $("#report-body").innerHTML = '<div class="hero"><p class="kicker">Minutes</p><h2>No room yet</h2><p>Create or join a room first.</p></div>';
       return;
     }
-    if (engine) engine.stop();
-    engine = new ACMA_ENGINE.SessionEngine(renderTick, onEngineEvent);
-    const speedEl = $("#speed");
-    engine.setSpeed(Number(speedEl && speedEl.value) || 2);
-    const session = engine.start();
-    $("#session-code").textContent = session.code;
-    $("#session-title").textContent = session.title;
-    $("#caption-who").textContent = "Calibrating capture pipeline";
-    $("#caption-text").textContent = "Camera, mic array and VAD coming online.";
-    $("#transcript").innerHTML = "";
-    renderFaces(session);
-    show("live");
-    $("#chip-live").classList.remove("hidden");
-    if (user.role !== "attendee") tryCamera();
+    const speakers = {};
+    target.messages.forEach(function (m) { speakers[m.name] = (speakers[m.name] || 0) + 1; });
+    const ranked = Object.keys(speakers).sort(function (a, b) { return speakers[b] - speakers[a]; });
+    $("#report-body").innerHTML =
+      '<div class="hero"><p class="kicker">Session report</p><h2>' + target.name + "</h2><p>" + target.code + " \u00b7 " + target.members.length + " members \u00b7 " + target.messages.length + " notes</p></div>" +
+      '<section class="card report" style="margin-top:12px"><h3>Summary</h3><p>' + target.members.length + " people in " + target.name + ". " + target.messages.length + " contributions captured.</p></section>" +
+      '<section class="card report"><h3>Who spoke</h3><ul>' + (ranked.length ? ranked.map(function (n) { return "<li>" + n + " \u2014 " + speakers[n] + " turns</li>"; }).join("") : "<li>No speakers yet.</li>") + "</ul></section>" +
+      '<section class="card"><h3>Full transcript</h3><div class="list" style="max-height:360px;margin-top:8px">' +
+      target.messages.map(function (msg) { return '<div class="line"><time></time><div><span class="spk">' + msg.name + "</span> " + escapeHtml(msg.text) + "</div></div>"; }).join("") +
+      "</div></section>";
+  }
+
+  function renderAccount() {
+    refreshUser();
+    if (!user) { show("auth"); return; }
+    $("#account-body").innerHTML =
+      '<div class="hero"><p class="kicker">Account</p><h2>' + user.name + "</h2><p>" + user.email + "</p></div>" +
+      '<div class="card" style="margin-top:12px"><div class="toggle"><span>Rooms</span><b>' + ACMA_STORE.myRooms().length + "</b></div></div>" +
+      '<button class="btn ghost full" style="margin-top:12px" id="signout" type="button">Sign out</button>';
+    $("#signout").onclick = function () {
+      stopCamera(); ACMA_STORE.logout(); user = null; room = null;
+      $("#chip-live").classList.add("hidden"); $("#who-chip").textContent = "Sign in";
+      show("auth"); toast("Signed out.");
+    };
   }
 
   async function tryCamera() {
@@ -160,9 +248,7 @@
     try {
       mediaStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" }, audio: false });
       const v = $("#room-video");
-      v.srcObject = mediaStream;
-      v.classList.remove("hidden");
-      $("#room-fallback").classList.add("hidden");
+      v.srcObject = mediaStream; v.classList.remove("hidden"); $("#room-fallback").classList.add("hidden");
     } catch (err) {}
   }
 
@@ -175,173 +261,50 @@
     if (fb) fb.classList.remove("hidden");
   }
 
-  function endSession() {
-    if (!engine) {
-      renderReport({ report: null, title: "No report", transcript: [] });
-      show("report");
-      return;
-    }
-    const session = engine.end();
-    state.sessions.unshift(session);
-    persist();
-    stopCamera();
-    $("#chip-live").classList.add("hidden");
-    engine = null;
-    renderReport(session);
-    show("report");
-    toast("Minutes package ready.");
-  }
-
-  function renderReport(session) {
-    const r = session && session.report;
-    if (!r) {
-      $("#report-body").innerHTML = '<div class="hero"><p class="kicker">Session report</p><h2>No minutes yet</h2><p>Open Live, grant consent, then end the session to generate a report.</p></div><button class="btn" data-go="live" type="button" style="margin-top:12px">Go to Live</button>';
-      return;
-    }
-    $("#report-body").innerHTML =
-      '<div class="hero"><p class="kicker">Session report</p><h2>' + session.title + "</h2><p>" + session.code + " \u00b7 " + session.room + " \u00b7 " + r.durationSec + "s</p></div>" +
-      '<div class="grid stats" style="margin-top:12px">' +
-      '<div class="card stat"><div class="val">' + session.transcript.length + '</div><div class="lbl">Transcript chunks</div></div>' +
-      '<div class="card stat"><div class="val">' + r.interruptions + '</div><div class="lbl">Interruptions</div></div>' +
-      '<div class="card stat"><div class="val">' + r.volumeSpikes + '</div><div class="lbl">Volume spikes</div></div>' +
-      '<div class="card stat"><div class="val">' + r.speakerAccuracy + '%</div><div class="lbl">Speaker map</div></div></div>' +
-      '<section class="card report" style="margin-top:12px"><h3>Executive summary</h3><p>' + r.abstract + "</p></section>" +
-      '<section class="card report"><h3>Key decisions</h3><ul>' + r.decisions.map(function (d) { return "<li>" + d + "</li>"; }).join("") + "</ul></section>" +
-      '<section class="card report"><h3>Action items</h3><ul>' + r.actions.map(function (a) { return "<li><b>" + a.owner + "</b> - " + a.task + " (" + a.due + ")</li>"; }).join("") + "</ul></section>" +
-      '<section class="card"><h3>Diarized transcript</h3><div class="list" style="max-height:360px;margin-top:8px">' +
-      session.transcript.map(function (line) {
-        return '<div class="line"><time>' + fmtT(line.t) + '</time><div><span class="spk">' + line.speaker + "</span> " + escapeHtml(line.text) + "</div></div>";
-      }).join("") + "</div></section>" +
-      '<div class="row" style="margin-top:12px"><button class="btn" id="btn-share" type="button">Share notes</button><button class="btn ghost" id="btn-export" type="button">Export JSON</button></div>';
-    const share = $("#btn-share");
-    const exp = $("#btn-export");
-    if (share) share.onclick = function () { toast("Notes queued to absentees and attendees."); };
-    if (exp) exp.onclick = function () { exportSession(session); };
-  }
-
-  function exportSession(session) {
-    const blob = new Blob([JSON.stringify(session, null, 2)], { type: "application/json" });
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = session.code + "-package.json";
-    a.click();
-  }
-
-  function renderAdmin() {
-    $("#admin-body").innerHTML =
-      '<div class="hero"><p class="kicker">IT and AV</p><h2>Configure room integration</h2><p>Software integrates with existing hardware.</p></div>' +
-      '<div class="card" style="margin-top:12px">' +
-      '<div class="toggle"><span>Camera endpoint</span><input id="av-cam" type="text" value="' + state.av.camera + '"></div>' +
-      '<div class="toggle"><span>Microphone array</span><input id="av-mic" type="text" value="' + state.av.mic + '"></div>' +
-      '<div class="toggle"><span>Gateway</span><input id="av-gw" type="text" value="' + state.av.gateway + '"></div>' +
-      '<div class="toggle"><span>Retention (days)</span><input id="av-ret" type="text" value="' + state.retentionDays + '"></div></div>' +
-      '<button class="btn full" style="margin-top:12px" id="save-av" type="button">Save configuration</button>';
-    $("#save-av").onclick = function () {
-      state.av.camera = $("#av-cam").value;
-      state.av.mic = $("#av-mic").value;
-      state.av.gateway = $("#av-gw").value;
-      state.retentionDays = Number($("#av-ret").value) || 14;
-      persist();
-      toast("A/V profile saved.");
-    };
-  }
-
-  function renderCompliance() {
-    $("#compliance-body").innerHTML =
-      '<div class="hero"><p class="kicker">GDPR / FERPA</p><h2>Privacy and retention desk</h2><p>Streams stay in-memory unless recording consent is explicit.</p></div>' +
-      '<div class="card" style="margin-top:12px">' +
-      '<div class="toggle"><span>Session capture consent</span><b>' + (state.consent ? "Granted" : "Missing") + "</b></div>" +
-      '<div class="toggle"><span>Retention window</span><b>' + state.retentionDays + " days</b></div>" +
-      '<div class="toggle"><span>Sessions on device</span><b>' + state.sessions.length + "</b></div></div>" +
-      '<div class="row" style="margin-top:12px"><button class="btn warn" id="purge" type="button">Purge local sessions</button><button class="btn ghost" id="revoke" type="button">Revoke consent</button></div>';
-    $("#purge").onclick = function () { state.sessions = []; persist(); toast("Local transcripts purged."); renderCompliance(); };
-    $("#revoke").onclick = function () { state.consent = false; state.recordConsentedMedia = false; persist(); toast("Consent revoked."); renderCompliance(); };
-  }
-
-  function renderAccount() {
-    ensureUser();
-    $("#account-body").innerHTML =
-      '<div class="hero"><p class="kicker">Account</p><h2>' + user.name + "</h2><p>" + user.title + "</p></div>" +
-      '<div class="card" style="margin-top:12px"><div class="toggle"><span>Role</span><b>' + user.role + "</b></div></div>" +
-      '<p class="muted" style="margin:14px 2px 8px">Switch demo role</p>' +
-      '<div class="grid roles" style="margin-top:0">' +
-      '<button class="role" data-role="host" type="button"><div class="avatar" style="background:#2ee6c833;color:#2ee6c8">AH</div><div><h3>Dr. Amal Hassan</h3><p>Faculty / Meeting Host</p></div></button>' +
-      '<button class="role" data-role="attendee" type="button"><div class="avatar" style="background:#4cc9f033;color:#4cc9f0">JL</div><div><h3>Jordan Lee</h3><p>Student / Attendee</p></div></button>' +
-      '<button class="role" data-role="admin" type="button"><div class="avatar" style="background:#f4b94233;color:#f4b942">SQ</div><div><h3>Samir Qureshi</h3><p>IT and AV</p></div></button>' +
-      '<button class="role" data-role="compliance" type="button"><div class="avatar" style="background:#a78bfa33;color:#a78bfa">EV</div><div><h3>Elena Voss</h3><p>Compliance and Legal</p></div></button></div>';
-  }
-
-  function handleClick(e) {
-    const roleBtn = e.target.closest("[data-role]");
-    if (roleBtn) { login(roleBtn.getAttribute("data-role")); return; }
-    const actBtn = e.target.closest("[data-act]");
-    const act = actBtn && actBtn.getAttribute("data-act");
-    const goBtn = e.target.closest("[data-go]");
-    const dest = goBtn && goBtn.getAttribute("data-go");
-    const openBtn = e.target.closest("[data-open]");
-    const open = openBtn && openBtn.getAttribute("data-open");
-    if (act === "start") startSession();
-    if (act === "reports") go("report");
-    if (act === "admin") go("admin");
-    if (act === "legal") go("compliance");
-    if (dest) go(dest);
-    if (open) {
-      const s = state.sessions.find(function (x) { return x.id === open; });
-      if (s) { renderReport(s); show("report"); }
-    }
-  }
-
   function toggleSpeech() {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SR) { toast("Live mic STT is not available in this browser. Demo captions still run."); return; }
-    if (recognizing) { recognition.stop(); recognizing = false; $("#btn-mic").textContent = "Host mic"; return; }
-    recognition = new SR();
-    recognition.continuous = true;
-    recognition.interimResults = true;
-    recognition.lang = "en-US";
-    recognition.onresult = function (ev) {
-      let text = "";
-      for (let i = ev.resultIndex; i < ev.results.length; i++) text += ev.results[i][0].transcript;
-      if (text.trim() && engine && engine.session) {
-        $("#caption-who").textContent = (user && user.name ? user.name : "Host") + " \u00b7 device mic";
-        $("#caption-text").textContent = text.trim();
-      }
+    if (!SR) { toast("Type notes if speech recognition is unavailable."); return; }
+    if (!room) { toast("Open a room first."); return; }
+    const rec = new SR();
+    rec.lang = "en-US"; rec.interimResults = false;
+    rec.onresult = function (ev) {
+      try { ACMA_STORE.addMessage(room.id, ev.results[0][0].transcript); renderLive(); renderRoom(); } catch (err) {}
     };
-    recognition.onend = function () { recognizing = false; };
-    recognition.start();
-    recognizing = true;
-    $("#btn-mic").textContent = "Stop mic";
-    toast("Device speech recognition on.");
+    rec.start(); toast("Listening...");
   }
 
-  document.body.addEventListener("click", handleClick);
-  $("#btn-end").addEventListener("click", endSession);
+  document.body.addEventListener("click", function (e) {
+    const auth = e.target.closest("[data-auth]");
+    if (auth) setAuthMode(auth.getAttribute("data-auth"));
+    const goBtn = e.target.closest("[data-go]");
+    if (goBtn) go(goBtn.getAttribute("data-go"));
+    const open = e.target.closest("[data-open-room]");
+    if (open) openRoom(open.getAttribute("data-open-room"));
+  });
+
+  $("#form-register").addEventListener("submit", onRegister);
+  $("#form-login").addEventListener("submit", onLogin);
+  $("#btn-create-room").addEventListener("click", createRoom);
+  $("#btn-join-room").addEventListener("click", joinByCode);
+  $("#btn-copy-code").addEventListener("click", copyCode);
+  $("#btn-send").addEventListener("click", sendMessage);
+  $("#chat-text").addEventListener("keydown", function (e) {
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+  });
+  $("#btn-start-live").addEventListener("click", startLive);
   $("#btn-hand").addEventListener("click", function () {
-    if (engine) engine.raiseHand(user && user.id === "u-jordan" ? "p-jordan" : "p-maya");
+    if (!room) return; ACMA_STORE.toggleHand(room.id); renderRoom(); renderLive();
   });
-  $("#speed").addEventListener("change", function (e) {
-    if (engine) engine.setSpeed(Number(e.target.value));
-  });
-  $("#grant-consent").addEventListener("click", function () {
-    state.consent = true;
-    state.recordConsentedMedia = $("#consent-record").checked;
-    persist();
-    $("#modal-consent").classList.remove("open");
-    startSession();
-  });
-  $("#deny-consent").addEventListener("click", function () {
-    $("#modal-consent").classList.remove("open");
-    toast("Capture blocked. You can still browse Home, Report and Account.");
-  });
+  $("#btn-end").addEventListener("click", endLive);
   $("#btn-mic").addEventListener("click", toggleSpeech);
-  $("#who-chip").addEventListener("click", function () { go("account"); });
+  $("#who-chip").addEventListener("click", function () { go(user ? "account" : "auth"); });
+  $("#btn-leave").addEventListener("click", function () {
+    if (!room) return; ACMA_STORE.leaveRoom(room.id); room = null; renderHome(); show("home"); toast("Left the room.");
+  });
 
-  if ("serviceWorker" in navigator) {
-    navigator.serviceWorker.register("./sw.js").catch(function () {});
-  }
-
-  window.ACMA = { go: go, login: login };
-  ensureUser(state.userRole || "host");
-  renderHome();
-  show("home");
+  if ("serviceWorker" in navigator) navigator.serviceWorker.register("./sw.js").catch(function () {});
+  window.ACMA = { go: go };
+  refreshUser();
+  setAuthMode("register");
+  if (user) { renderHome(); show("home"); } else show("auth");
 })();
