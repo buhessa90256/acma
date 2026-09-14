@@ -35,7 +35,7 @@
     if (name === "home") { renderHome(); show("home"); return; }
     if (name === "room") {
       if (!room) { renderHome(); show("home"); return; }
-      renderRoom(); show("room"); return;
+      renderRoom(); show("room"); autoMedia(); return;
     }
     if (name === "live") {
       if (!room) { renderHome(); show("home"); return; }
@@ -49,9 +49,7 @@
     var reg = $("#form-register"); var login = $("#form-login");
     if (reg) reg.classList.toggle("hidden", mode !== "register");
     if (login) login.classList.toggle("hidden", mode !== "login");
-    $$("[data-auth]").forEach(function (b) {
-      b.classList.toggle("active", b.getAttribute("data-auth") === mode);
-    });
+    $$("[data-auth]").forEach(function (b) { b.classList.toggle("active", b.getAttribute("data-auth") === mode); });
   }
   async function onRegister(e) {
     e.preventDefault(); $("#reg-err").textContent = "";
@@ -81,7 +79,7 @@
     if (who) who.textContent = (user && user.name) + " \u00b7 " + item.lang;
     if (text) text.textContent = item.text;
     if (!item.interim && room && item.text) {
-      try { ACMA_STORE.addMessage(room.id, item.text); reloadRoom(); renderLive(); } catch (e) {}
+      try { ACMA_STORE.addMessage(room.id, item.text); reloadRoom(); if ($("#screen-live") && $("#screen-live").classList.contains("active")) renderLive(); } catch (e) {}
     }
   }
   async function autoMedia() {
@@ -95,6 +93,7 @@
   function bindRoom(next) {
     room = ACMA_STORE.populated(next);
     bindMedia();
+    autoMedia();
     if (room && ACMA_STORE.watch) {
       ACMA_STORE.watch(room.code, function (updated) {
         if (!room || updated.code !== room.code) return;
