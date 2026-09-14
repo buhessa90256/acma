@@ -1,4 +1,4 @@
-const CACHE = "acma-v2";
+const CACHE = "acma-v4";
 const ASSETS = [
   "./",
   "./index.html",

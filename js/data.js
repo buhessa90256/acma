@@ -7,10 +7,10 @@ window.ACMA_DATA = {
     startedAt: null
   },
   users: {
-    host: { id: "u-host", name: "Dr. Amal Hassan", role: "host", title: "Faculty / Meeting Host" },
-    attendee: { id: "u-jordan", name: "Jordan Lee", role: "attendee", title: "Student / Attendee" },
-    admin: { id: "u-admin", name: "Samir Qureshi", role: "admin", title: "IT & AV Administrator" },
-    compliance: { id: "u-legal", name: "Elena Voss", role: "compliance", title: "Compliance & Legal" }
+    host: { id: "u-host", name: "Dr. Amal Hassan", short: "Amal", role: "host", title: "Faculty / Meeting Host" },
+    attendee: { id: "u-jordan", name: "Jordan Lee", short: "Jordan", role: "attendee", title: "Student / Attendee" },
+    admin: { id: "u-admin", name: "Samir Qureshi", short: "Samir", role: "admin", title: "IT & AV Administrator" },
+    compliance: { id: "u-legal", name: "Elena Voss", short: "Elena", role: "compliance", title: "Compliance & Legal" }
   },
   participants: [
     { id: "p-amal", name: "Dr. Amal Hassan", role: "Host", initials: "AH", color: "#2ee6c8", speakingBias: 0.28 },
@@ -25,7 +25,7 @@ window.ACMA_DATA = {
   script: [
     { t: 2, speaker: "p-amal", text: "Welcome back. Today we lock the fusion contract for who-said-what minutes.", db: 64, attention: 0.86 },
     { t: 8, speaker: "p-amal", text: "Edge vision stays on the room device. Cloud handles Whisper, diarization, and the LLM package.", db: 62, attention: 0.84 },
-    { t: 14, speaker: "p-jordan", text: "If lip activity disagrees with the d-vector cluster, do we bind to the visual identity?", db: 66, attention: 0.88, hand: null },
+    { t: 14, speaker: "p-jordan", text: "If lip activity disagrees with the d-vector cluster, do we bind to the visual identity?", db: 66, attention: 0.88 },
     { t: 18, speaker: "p-amal", text: "Yes. Visual lip timeline wins when confidence is high. Otherwise we flag an uncertain match.", db: 63, attention: 0.87 },
     { t: 24, speaker: "p-sara", text: "Can the dashboard surface raised hands without interrupting the lecturer?", db: 61, attention: 0.83, hand: "p-sara" },
     { t: 28, speaker: "p-amal", text: "That is the point of the live engagement pane. Hands appear as cues, not as a takeover.", db: 64, attention: 0.85 },
@@ -43,12 +43,11 @@ window.ACMA_DATA = {
     { t: 90, speaker: "p-amal", text: "If there are no other hands, we will close the capture pipeline and request the summary package.", db: 61, attention: 0.87 }
   ],
   summaryPackage: {
-    abstract:
-      "Studio locked the multimodal fusion contract for CLASS-402-B: edge vision stays local, cloud runs Whisper diarization and LLM minutes. Speaker identity is bound by aligning audio d-vectors with lip-activity timelines. Recordings remain in-memory unless consent is granted. Minutes, flags, decisions, and actions ship within five minutes of session end.",
+    abstract: "Studio locked the multimodal fusion contract for CLASS-402-B: edge vision stays local, cloud runs Whisper diarization and LLM minutes.",
     decisions: [
       "Visual lip timeline overrides uncertain audio-only speaker clusters when lip confidence is high.",
       "Raised-hand and silence flags stay on the host dashboard and are not broadcast to attendees.",
-      "Overlapping speech plus volume spikes are logged as interruption / cross-talk events.",
+      "Overlapping speech plus volume spikes are logged as interruption events.",
       "No automated grading from participation transcripts."
     ],
     actions: [
