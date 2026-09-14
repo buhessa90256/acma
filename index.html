@@ -7,8 +7,8 @@
   <title>ACMA — Classroom & Meeting Assistant</title>
   <link rel="manifest" href="./manifest.json" />
   <link rel="icon" href="./icons/icon.svg" type="image/svg+xml" />
-  <link rel="stylesheet" href="./css/styles.css" />
-  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;550;650;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="./css/styles.css?v=8" />
+  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;550;650;700&family=Tajawal:wght@400;500;700&display=swap" rel="stylesheet" />
   <style>
     .auth-card{max-width:460px;margin:18px auto 0}
     .form{display:grid;gap:10px;margin-top:14px}
@@ -20,6 +20,13 @@
     .code-pill{font-family:ui-monospace,Menlo,Consolas,monospace;letter-spacing:.18em;font-size:1.15rem;font-weight:700;color:var(--teal);background:#07141c;border:1px dashed rgba(46,230,200,.35);border-radius:14px;padding:12px;text-align:center}
     .member{display:flex;gap:10px;align-items:center;background:var(--panel2);border:1px solid var(--line);border-radius:14px;padding:10px}
     .composer{display:grid;grid-template-columns:1fr auto;gap:8px;margin-top:10px}
+    .video-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:8px;margin-top:10px}
+    .vid-tile{position:relative;background:#050c12;border:1px solid var(--line);border-radius:14px;overflow:hidden;min-height:120px}
+    .vid-tile video{width:100%;height:140px;object-fit:cover;background:#050c12;display:block}
+    .vid-tile.mine{border-color:rgba(46,230,200,.45)}
+    .vid-name{position:absolute;left:8px;right:8px;bottom:6px;font-size:.72rem;background:rgba(0,0,0,.45);padding:3px 6px;border-radius:8px}
+    .lang-btn{min-width:42px;font-weight:700}
+    body.rtl{font-family:"Tajawal","Sora",sans-serif}
   </style>
 </head>
 <body>
@@ -27,43 +34,44 @@
     <header class="topbar">
       <div class="brand">
         <img src="./icons/icon.svg" alt="ACMA" />
-        <div><h1>ACMA</h1><small>Classroom & Meeting Assistant</small></div>
+        <div><h1>ACMA</h1><small data-i18n="brandSub">Classroom & Meeting Assistant</small></div>
       </div>
       <div class="top-actions">
+        <button class="btn ghost sm lang-btn" id="lang-toggle" type="button">ع</button>
         <span id="chip-live" class="chip live hidden">LIVE</span>
-        <span id="who-chip" class="chip" role="button">Sign in</span>
+        <span id="who-chip" class="chip" role="button" data-i18n="signIn">Sign in</span>
         <nav class="desk-nav need-auth hidden">
-          <button class="btn ghost sm" data-go="home" type="button">Home</button>
-          <button class="btn ghost sm" data-go="room" type="button">Room</button>
-          <button class="btn ghost sm" data-go="live" type="button">Live</button>
-          <button class="btn ghost sm" data-go="report" type="button">Report</button>
-          <button class="btn ghost sm" data-go="account" type="button">Account</button>
+          <button class="btn ghost sm" data-go="home" type="button" data-i18n="home">Home</button>
+          <button class="btn ghost sm" data-go="room" type="button" data-i18n="room">Room</button>
+          <button class="btn ghost sm" data-go="live" type="button" data-i18n="live">Live</button>
+          <button class="btn ghost sm" data-go="report" type="button" data-i18n="report">Report</button>
+          <button class="btn ghost sm" data-go="account" type="button" data-i18n="account">Account</button>
         </nav>
       </div>
     </header>
     <section id="screen-auth" class="screen active">
       <div class="hero">
-        <p class="kicker">Accounts and rooms</p>
-        <h2>Create an account. Open a room. Share the code.</h2>
-        <p>Use the browser tab, not the old installed icon. Host creates the room, then the other device joins the same code.</p>
+        <p class="kicker">ACMA</p>
+        <h2 data-i18n="accountsTitle">Create an account. Open a room. Share the code.</h2>
+        <p data-i18n="accountsBody">Anyone can register. The host creates a room, then others join with the 6-character code.</p>
       </div>
       <div class="card auth-card">
         <div class="tabs-mini">
-          <button class="btn ghost active" data-auth="register" type="button">Create account</button>
-          <button class="btn ghost" data-auth="login" type="button">Sign in</button>
+          <button class="btn ghost active" data-auth="register" type="button" data-i18n="createAccount">Create account</button>
+          <button class="btn ghost" data-auth="login" type="button" data-i18n="signIn">Sign in</button>
         </div>
         <form id="form-register" class="form">
-          <label>Full name<input id="reg-name" type="text" required /></label>
-          <label>Email<input id="reg-email" type="email" required /></label>
-          <label>Password<input id="reg-pass" type="password" required minlength="6" /></label>
+          <label><span data-i18n="fullName">Full name</span><input id="reg-name" type="text" required /></label>
+          <label><span data-i18n="email">Email</span><input id="reg-email" type="email" required /></label>
+          <label><span data-i18n="password">Password</span><input id="reg-pass" type="password" required minlength="6" /></label>
           <div class="err" id="reg-err"></div>
-          <button class="btn full" type="submit">Create account</button>
+          <button class="btn full" type="submit" data-i18n="createAccount">Create account</button>
         </form>
         <form id="form-login" class="form hidden">
-          <label>Email<input id="login-email" type="email" required /></label>
-          <label>Password<input id="login-pass" type="password" required /></label>
+          <label><span data-i18n="email">Email</span><input id="login-email" type="email" required /></label>
+          <label><span data-i18n="password">Password</span><input id="login-pass" type="password" required /></label>
           <div class="err" id="login-err"></div>
-          <button class="btn full" type="submit">Sign in</button>
+          <button class="btn full" type="submit" data-i18n="signIn">Sign in</button>
         </form>
       </div>
     </section>
@@ -71,24 +79,29 @@
       <div id="home-hero" class="hero"></div>
       <div class="grid" style="margin-top:14px">
         <div class="card">
-          <h3>Create a room</h3>
+          <h3 data-i18n="createRoom">Create a room</h3>
           <div class="form">
-            <label>Room name<input id="room-name" type="text" /></label>
-            <label>Topic<input id="room-topic" type="text" /></label>
+            <label><span data-i18n="roomName">Room name</span><input id="room-name" type="text" /></label>
+            <label><span data-i18n="topic">Topic</span><input id="room-topic" type="text" /></label>
             <div class="err" id="create-err"></div>
-            <button class="btn full" id="btn-create-room" type="button">Create room</button>
+            <button class="btn full" id="btn-create-room" type="button" data-i18n="createRoom">Create room</button>
           </div>
         </div>
         <div class="card">
-          <h3>Join a room</h3>
+          <h3 data-i18n="joinRoom">Join a room</h3>
           <div class="form">
-            <label>Room code<input id="join-code" type="text" maxlength="8" style="text-transform:uppercase" /></label>
+            <label><span data-i18n="roomCode">Room code</span><input id="join-code" type="text" maxlength="8" style="text-transform:uppercase" /></label>
             <div class="err" id="join-err"></div>
-            <button class="btn full" id="btn-join-room" type="button">Join room</button>
+            <button class="btn full" id="btn-join-room" type="button" data-i18n="joinRoom">Join room</button>
           </div>
         </div>
+        <div class="card">
+          <h3 data-i18n="demoBtn">Dr. Amal demo</h3>
+          <p class="muted" data-i18n="demoHint">Scripted classroom demo — not a real room.</p>
+          <button class="btn ghost full" id="btn-demo" type="button" data-i18n="demoBtn">Dr. Amal demo</button>
+        </div>
       </div>
-      <h3 style="margin:18px 2px 8px;font-size:0.95rem">Your rooms</h3>
+      <h3 style="margin:18px 2px 8px;font-size:0.95rem" data-i18n="yourRooms">Your rooms</h3>
       <div id="home-rooms" class="grid"></div>
     </section>
     <section id="screen-room" class="screen">
@@ -97,19 +110,19 @@
         <h2 id="room-title">Room</h2>
         <div class="code-pill" id="room-code">------</div>
         <div class="row" style="margin-top:12px">
-          <button class="btn sm" id="btn-copy-code" type="button">Copy code</button>
-          <button class="btn sm" id="btn-start-live" type="button">Start live session</button>
-          <button class="btn ghost sm" id="btn-leave" type="button">Leave room</button>
+          <button class="btn sm" id="btn-copy-code" type="button" data-i18n="copyCode">Copy code</button>
+          <button class="btn sm" id="btn-start-live" type="button" data-i18n="startLive">Start live session</button>
+          <button class="btn ghost sm" id="btn-leave" type="button" data-i18n="leaveRoom">Leave room</button>
           <span class="chip" id="room-status">OPEN</span>
         </div>
       </div>
-      <h3 style="margin:16px 2px 8px;font-size:0.95rem">Members</h3>
+      <h3 style="margin:16px 2px 8px;font-size:0.95rem" data-i18n="members">Members</h3>
       <div id="room-members" class="grid"></div>
       <div class="card" style="margin-top:12px">
         <div id="room-chat" class="list"></div>
         <div class="composer">
-          <input id="chat-text" type="text" placeholder="Add a note" />
-          <button class="btn" id="btn-send" type="button">Send</button>
+          <input id="chat-text" type="text" data-i18n-ph="typeHere" placeholder="Type if you have no microphone" />
+          <button class="btn" id="btn-send" type="button" data-i18n="send">Post</button>
         </div>
       </div>
     </section>
@@ -121,46 +134,66 @@
         </div>
         <span class="chip live" id="live-status">STANDBY</span>
       </div>
-      <div class="live-layout">
-        <div>
-          <div class="room">
-            <video id="room-video" class="hidden" autoplay muted playsinline></video>
-            <div id="room-fallback" class="feed" style="display:grid;place-items:center;color:#8aa3b0;height:240px">Camera preview</div>
-          </div>
-          <div id="faces" class="faces"></div>
-          <div class="caption-box" style="margin-top:10px">
-            <div class="who" id="caption-who">Waiting</div>
-            <div id="caption-text">Room notes appear here.</div>
-          </div>
+      <p class="muted" data-i18n="cameraHint">Others in the room see and hear you after you tap Share camera & mic.</p>
+      <div class="row" style="margin:10px 0">
+        <button class="btn sm" id="btn-media" type="button" data-i18n="shareMedia">Share camera & mic</button>
+        <button class="btn ghost sm" id="btn-captions" type="button" data-i18n="captionsOff">Live captions off</button>
+        <button class="btn ghost sm" id="btn-hand" type="button" data-i18n="raiseHand">Raise hand</button>
+        <button class="btn warn sm" id="btn-end" type="button" data-i18n="endSession">End session</button>
+      </div>
+      <div id="video-grid" class="video-grid"></div>
+      <div class="caption-box" style="margin-top:10px">
+        <div class="who" id="caption-who">Waiting</div>
+        <div id="caption-text">—</div>
+      </div>
+      <div class="card" style="margin-top:12px">
+        <h3 data-i18n="liveTranscript">Live transcript</h3>
+        <div id="transcript" class="list" style="margin-top:8px"></div>
+        <div class="composer">
+          <input id="live-text" type="text" data-i18n-ph="typeHere" placeholder="Type if you have no microphone" />
+          <button class="btn" id="btn-live-send" type="button" data-i18n="send">Post</button>
         </div>
-        <div>
-          <div class="grid cards">
-            <div class="card stat"><div class="val" id="att-val">0</div><div class="lbl">Members</div></div>
-            <div class="card stat"><div class="val" id="db-val">off</div><div class="lbl">Live flag</div></div>
-            <div class="card stat"><div class="val" id="int-val">0</div><div class="lbl">Notes</div></div>
-            <div class="card stat"><div class="val" id="hands-val">0</div><div class="lbl">Raised hands</div></div>
-          </div>
-          <div class="card" style="margin-top:12px"><h3>Live transcript</h3><div id="transcript" class="list"></div></div>
-          <div class="row" style="margin-top:12px">
-            <button class="btn sm" id="btn-hand" type="button">Raise hand</button>
-            <button class="btn ghost sm" id="btn-mic" type="button">Host mic</button>
-            <button class="btn warn sm" id="btn-end" type="button">End session</button>
-          </div>
-        </div>
+      </div>
+      <div class="grid cards" style="margin-top:12px">
+        <div class="card stat"><div class="val" id="att-val">0</div><div class="lbl" data-i18n="members">Members</div></div>
+        <div class="card stat"><div class="val" id="int-val">0</div><div class="lbl" data-i18n="notes">Notes</div></div>
+        <div class="card stat"><div class="val" id="hands-val">0</div><div class="lbl">Hands</div></div>
+        <div class="card stat"><div class="val" id="db-val">off</div><div class="lbl">AV</div></div>
+      </div>
+      <div id="faces" class="faces"></div>
+    </section>
+    <section id="screen-demo" class="screen">
+      <div class="hero">
+        <p class="kicker">DEMO</p>
+        <h2 data-i18n="demoTitle">Systems Design Studio — Week 4</h2>
+        <p><span data-i18n="demoHost">Dr. Amal Hassan</span> · CLASS-402-B</p>
+      </div>
+      <div id="demo-faces" class="faces" style="margin-top:12px"></div>
+      <div class="caption-box" style="margin-top:10px">
+        <div class="who" id="demo-who">Dr. Amal Hassan</div>
+        <div id="demo-text">Welcome back. Today we lock the fusion contract for who-said-what minutes.</div>
+      </div>
+      <div class="card" style="margin-top:12px">
+        <h3 data-i18n="liveTranscript">Live transcript</h3>
+        <div id="demo-transcript" class="list" style="margin-top:8px"></div>
       </div>
     </section>
     <section id="screen-report" class="screen"><div id="report-body"></div></section>
     <section id="screen-account" class="screen"><div id="account-body"></div></section>
   </div>
   <nav class="tabbar need-auth hidden">
-    <button data-go="home" class="active" type="button">Home</button>
-    <button data-go="room" type="button">Room</button>
-    <button data-go="live" type="button">Live</button>
-    <button data-go="account" type="button">Account</button>
+    <button data-go="home" class="active" type="button" data-i18n="home">Home</button>
+    <button data-go="room" type="button" data-i18n="room">Room</button>
+    <button data-go="live" type="button" data-i18n="live">Live</button>
+    <button data-go="account" type="button" data-i18n="account">Account</button>
   </nav>
   <div id="toast" class="toast"></div>
   <script src="https://cdn.jsdelivr.net/npm/mqtt@5/dist/mqtt.min.js"></script>
-  <script src="./js/store.js?v=7"></script>
-  <script src="./js/app.js?v=7"></script>
+  <script src="./js/data.js?v=8"></script>
+  <script src="./js/i18n.js?v=8"></script>
+  <script src="./js/store.js?v=8"></script>
+  <script src="./js/media.js?v=8"></script>
+  <script src="./js/demo.js?v=8"></script>
+  <script src="./js/app.js?v=8"></script>
 </body>
 </html>
