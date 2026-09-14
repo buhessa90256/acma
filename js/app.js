@@ -51,22 +51,28 @@
     catch (err) { $("#login-err").textContent = err.message; }
   }
   function publishMine() { if (!ACMA_STORE.publishRoom) return; ACMA_STORE.myRooms().forEach(function (r) { ACMA_STORE.publishRoom(r); }); }
+  function escapeHtml(s) { var box = document.createElement("div"); box.textContent = s == null ? "" : String(s); return box.innerHTML; }
+  function paintLiveLine(text) {
+    var box = $("#transcript"); if (!box) return;
+    var line = $("#live-line");
+    if (!line) { line = document.createElement("div"); line.id = "live-line"; line.className = "line"; box.insertBefore(line, box.firstChild); }
+    line.innerHTML = "<time>now</time><div><span class='spk'>" + (user && user.name || "") + "</span> " + escapeHtml(text) + "</div>";
+  }
   function onCaptionText(item) {
-    var who = $("#caption-who"); var text = $("#caption-text");
-    if (who) who.textContent = (user && user.name) + " \u00b7 " + item.lang;
-    if (text) text.textContent = item.text;
+    if (item && item.text) paintLiveLine(item.text);
     if (!item.interim && room && item.text) { try { ACMA_STORE.addMessage(room.id, item.text); reloadRoom(); renderMeet(); } catch (e) {} }
   }
   function bindMedia() {
     if (!room || !user || !window.ACMA_MEDIA) return;
     ACMA_MEDIA.attachRoom(room.code, user, room.members || []);
-    ACMA_MEDIA.startCaptions(onCaptionText);
   }
   async function autoMedia() {
     if (!room || !window.ACMA_MEDIA) return;
     bindMedia();
     try {
       await ACMA_MEDIA.start();
+      ACMA_MEDIA.stopCaptions();
+      ACMA_MEDIA.startCaptions(onCaptionText);
       if (room && !room.live) ACMA_STORE.setLive(room.id, true);
       updateMediaButtons(); setMeetStatus();
     } catch (err) { toast(err.message || String(err)); }
@@ -77,7 +83,7 @@
     var rem = window.ACMA_MEDIA ? ACMA_MEDIA.remoteCount() : 0;
     if (rem > 0) el.textContent = "Live with " + rem + " other camera" + (rem > 1 ? "s" : "") + ".";
     else if (n > 1) el.textContent = n + " in the room. Keep this page open so others can see you.";
-    else el.textContent = "Share the code. Speak to move the green mic bar.";
+    else el.textContent = "Share the code. Speak and words appear in the transcript.";
   }
   function updateMediaButtons() {
     var mic = $("#btn-mic"); var cam = $("#btn-cam");
@@ -129,24 +135,20 @@
     var fresh = ACMA_STORE.getRoom(room.id) || ACMA_STORE.findRoomByCode(room.code);
     room = ACMA_STORE.populated(fresh || room); return room;
   }
-  function escapeHtml(s) { var box = document.createElement("div"); box.textContent = s == null ? "" : String(s); return box.innerHTML; }
   function transcriptHtml(messages) {
     return (messages || []).slice(-50).reverse().map(function (msg) {
       var t = new Date(msg.at);
       var stamp = String(t.getHours()).padStart(2, "0") + ":" + String(t.getMinutes()).padStart(2, "0");
       return "<div class='line'><time>" + stamp + "</time><div><span class='spk'>" + escapeHtml(msg.name) + "</span> " + escapeHtml(msg.text) + "</div></div>";
-    }).join("") || "<p class='muted'>No notes yet.</p>";
+    }).join("") || "<p class='muted'>Speak — words appear here.</p>";
   }
   function renderMeet() {
     reloadRoom(); if (!room) { renderHome(); show("home"); return; }
     $("#meet-code").textContent = room.code; $("#meet-title").textContent = room.name;
     setMeetStatus(); $("#chip-live").classList.toggle("hidden", !room.live);
     $("#transcript").innerHTML = transcriptHtml(room.messages);
-    var last = room.messages && room.messages[room.messages.length - 1];
-    if (last) { $("#caption-who").textContent = last.name; $("#caption-text").textContent = last.text; }
     $("#meet-members").innerHTML = room.members.map(function (m) {
-      var hand = (room.hands || []).indexOf(m.userId) !== -1;
-      return "<div class='member'><div class='avatar' style='background:#2ee6c833;color:#2ee6c8'>" + m.initials + "</div><div><b>" + m.name + "</b><p class='muted'>" + m.role + (hand ? " \u00b7 hand" : "") + "</p></div></div>";
+      return "<div class='member'><div class='avatar' style='background:#2ee6c833;color:#2ee6c8'>" + m.initials + "</div><div><b>" + m.name + "</b><p class='muted'>" + m.role + "</p></div></div>";
     }).join("");
     if (window.ACMA_MEDIA) ACMA_MEDIA.setMembers(room.members || []);
     updateMediaButtons();
@@ -196,15 +198,9 @@
   on("btn-create-room", "click", createRoom); on("btn-join-room", "click", joinByCode);
   on("btn-copy-code", "click", copyCode); on("btn-live-send", "click", postText);
   on("live-text", "keydown", function (e) { if (e.key === "Enter") { e.preventDefault(); postText(); } });
-  on("btn-hand", "click", function () { if (!room) return; ACMA_STORE.toggleHand(room.id); renderMeet(); });
   on("btn-end", "click", endLive); on("btn-demo", "click", openDemo);
   on("btn-mic", "click", function () { if (window.ACMA_MEDIA) { ACMA_MEDIA.toggleMic(); updateMediaButtons(); } });
   on("btn-cam", "click", function () { if (window.ACMA_MEDIA) { ACMA_MEDIA.toggleCam(); updateMediaButtons(); } });
-  on("btn-talk", "click", function () {
-    if (!window.ACMA_MEDIA) return;
-    var ok = ACMA_MEDIA.tapTalk(onCaptionText);
-    toast(ok ? "Listening... speak now" : ACMA_I18N.t("noSpeech"));
-  });
   on("lang-toggle", "click", function () {
     ACMA_I18N.toggle(); ACMA_I18N.apply();
     if (user && $("#screen-home") && $("#screen-home").classList.contains("active")) renderHome();
