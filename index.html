@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#061018" />
-  <meta name="description" content="ACMA — AI-powered classroom and meeting assistant. Live engagement, diarized transcripts, automated minutes." />
+  <meta name="description" content="ACMA classroom and meeting assistant" />
   <title>ACMA — Classroom & Meeting Assistant</title>
   <link rel="manifest" href="./manifest.json" />
   <link rel="icon" href="./icons/icon.svg" type="image/svg+xml" />
@@ -26,56 +26,31 @@
       </div>
       <div class="top-actions">
         <span id="chip-live" class="chip live hidden">LIVE</span>
-        <span id="who-chip" class="chip">Guest</span>
+        <span id="who-chip" class="chip" role="button">Guest</span>
         <nav class="desk-nav">
-          <button class="btn ghost sm" data-go="home">Home</button>
-          <button class="btn ghost sm" data-go="live">Live</button>
-          <button class="btn ghost sm" data-go="report">Report</button>
-          <button class="btn ghost sm" data-go="account">Account</button>
+          <button class="btn ghost sm" data-go="home" type="button" onclick="window.ACMA&&ACMA.go('home')">Home</button>
+          <button class="btn ghost sm" data-go="live" type="button" onclick="window.ACMA&&ACMA.go('live')">Live</button>
+          <button class="btn ghost sm" data-go="report" type="button" onclick="window.ACMA&&ACMA.go('report')">Report</button>
+          <button class="btn ghost sm" data-go="account" type="button" onclick="window.ACMA&&ACMA.go('account')">Account</button>
         </nav>
       </div>
     </header>
 
-    <section id="screen-login" class="screen active">
+    <section id="screen-login" class="screen">
       <div class="hero">
-        <p class="kicker">ACMA 1.0 · Edge + Cloud</p>
+        <p class="kicker">ACMA 1.0</p>
         <h2>See who spoke. Hear what mattered. Minutes in five minutes.</h2>
-        <p>Multimodal assistant for classrooms and meetings: lip-aligned speaker binding, live engagement, acoustic dynamics, and LLM minutes. Works on PC and mobile as a PWA.</p>
+        <p>Pick a demo role. No password.</p>
       </div>
-      <p class="muted" style="margin:16px 2px 8px">Sign in with a demo role — no password.</p>
       <div class="grid roles">
-        <button class="role" data-role="host" type="button">
-          <div class="avatar" style="background:#2ee6c833;color:#2ee6c8">AH</div>
-          <div>
-            <h3>Dr. Amal Hassan</h3>
-            <p>Faculty / Meeting Host — run the room, dashboard, and minutes.</p>
-          </div>
-        </button>
-        <button class="role" data-role="attendee" type="button">
-          <div class="avatar" style="background:#4cc9f033;color:#4cc9f0">JL</div>
-          <div>
-            <h3>Jordan Lee</h3>
-            <p>Student / Attendee — captions, raise hand, privacy-first join.</p>
-          </div>
-        </button>
-        <button class="role" data-role="admin" type="button">
-          <div class="avatar" style="background:#f4b94233;color:#f4b942">SQ</div>
-          <div>
-            <h3>Samir Qureshi</h3>
-            <p>IT & AV — camera/mic endpoints, WebRTC gateway, retention.</p>
-          </div>
-        </button>
-        <button class="role" data-role="compliance" type="button">
-          <div class="avatar" style="background:#a78bfa33;color:#a78bfa">EV</div>
-          <div>
-            <h3>Elena Voss</h3>
-            <p>Compliance & Legal — consent, FERPA/GDPR, purge controls.</p>
-          </div>
-        </button>
+        <button class="role" data-role="host" type="button"><div class="avatar" style="background:#2ee6c833;color:#2ee6c8">AH</div><div><h3>Dr. Amal Hassan</h3><p>Faculty / Meeting Host</p></div></button>
+        <button class="role" data-role="attendee" type="button"><div class="avatar" style="background:#4cc9f033;color:#4cc9f0">JL</div><div><h3>Jordan Lee</h3><p>Student / Attendee</p></div></button>
+        <button class="role" data-role="admin" type="button"><div class="avatar" style="background:#f4b94233;color:#f4b942">SQ</div><div><h3>Samir Qureshi</h3><p>IT & AV</p></div></button>
+        <button class="role" data-role="compliance" type="button"><div class="avatar" style="background:#a78bfa33;color:#a78bfa">EV</div><div><h3>Elena Voss</h3><p>Compliance & Legal</p></div></button>
       </div>
     </section>
 
-    <section id="screen-home" class="screen">
+    <section id="screen-home" class="screen active">
       <div id="home-hero" class="hero"></div>
       <div id="home-stats" class="grid stats"></div>
       <div id="home-actions" style="margin-top:14px"></div>
@@ -91,23 +66,18 @@
         </div>
         <span class="chip live" id="live-status">LIVE</span>
       </div>
-      <div class="consent-banner">In-memory processing is on. Recordings persist only if consent was granted for this session.</div>
+      <div class="consent-banner">In-memory processing is on. Recordings persist only if consent was granted.</div>
       <div class="live-layout">
         <div>
           <div class="room">
             <video id="room-video" class="hidden" autoplay muted playsinline></video>
-            <div id="room-fallback" class="feed" style="display:grid;place-items:center;color:#8aa3b0;height:240px">
-              Room preview · PTZ 1080p / 30 FPS simulation
-            </div>
-            <div class="overlay">
-              <span class="chip">Edge vision · YOLOv8-Face / MediaPipe</span>
-              <span class="chip">Whisper STT streaming</span>
-            </div>
+            <div id="room-fallback" class="feed" style="display:grid;place-items:center;color:#8aa3b0;height:240px">Room preview</div>
+            <div class="overlay"><span class="chip">Edge vision</span><span class="chip">Whisper STT</span></div>
           </div>
           <div id="faces" class="faces"></div>
           <div class="caption-box" style="margin-top:10px">
             <div class="who" id="caption-who">Waiting for speech</div>
-            <div id="caption-text">Live captions appear here as audio is bound to a visual speaker.</div>
+            <div id="caption-text">Live captions appear here.</div>
           </div>
         </div>
         <div>
@@ -121,19 +91,12 @@
             <div class="row space">
               <h3>Diarized feed</h3>
               <label class="muted">Speed
-                <select id="speed">
-                  <option value="1">1x</option>
-                  <option value="2" selected>2x</option>
-                  <option value="4">4x</option>
-                </select>
+                <select id="speed"><option value="1">1x</option><option value="2" selected>2x</option><option value="4">4x</option></select>
               </label>
             </div>
             <div id="transcript" class="list" style="margin-top:8px"></div>
           </div>
-          <div class="card" style="margin-top:12px">
-            <h3>Multimodal object / sec</h3>
-            <pre id="json-live" class="json">{}</pre>
-          </div>
+          <div class="card" style="margin-top:12px"><h3>Multimodal object / sec</h3><pre id="json-live" class="json">{}</pre></div>
           <div class="row" style="margin-top:12px">
             <button class="btn sm" id="btn-hand" type="button">Raise hand</button>
             <button class="btn ghost sm" id="btn-mic" type="button">Host mic</button>
@@ -143,35 +106,24 @@
       </div>
     </section>
 
-    <section id="screen-report" class="screen">
-      <div id="report-body"></div>
-    </section>
-
-    <section id="screen-admin" class="screen">
-      <div id="admin-body"></div>
-    </section>
-
-    <section id="screen-compliance" class="screen">
-      <div id="compliance-body"></div>
-    </section>
-
-    <section id="screen-account" class="screen">
-      <div id="account-body"></div>
-    </section>
+    <section id="screen-report" class="screen"><div id="report-body"></div></section>
+    <section id="screen-admin" class="screen"><div id="admin-body"></div></section>
+    <section id="screen-compliance" class="screen"><div id="compliance-body"></div></section>
+    <section id="screen-account" class="screen"><div id="account-body"></div></section>
   </div>
 
   <nav class="tabbar">
-    <button data-go="home" class="active" type="button">Home</button>
-    <button data-go="live" type="button">Live</button>
-    <button data-go="report" type="button">Report</button>
-    <button data-go="account" type="button">Account</button>
+    <button data-go="home" class="active" type="button" onclick="window.ACMA&&ACMA.go('home')">Home</button>
+    <button data-go="live" type="button" onclick="window.ACMA&&ACMA.go('live')">Live</button>
+    <button data-go="report" type="button" onclick="window.ACMA&&ACMA.go('report')">Report</button>
+    <button data-go="account" type="button" onclick="window.ACMA&&ACMA.go('account')">Account</button>
   </nav>
 
   <div id="modal-consent" class="modal">
     <div class="sheet">
       <h3>Capture consent</h3>
-      <p class="muted">ACMA will process faces, lip activity, and voice in-memory to bind speakers. Data is purged at session end unless you allow a consented recording.</p>
-      <label class="toggle"><span>Also keep an encrypted recording for the retention window</span><input id="consent-record" type="checkbox" /></label>
+      <p class="muted">ACMA will process faces, lip activity, and voice in-memory to bind speakers.</p>
+      <label class="toggle"><span>Also keep an encrypted recording</span><input id="consent-record" type="checkbox" /></label>
       <div class="row" style="margin-top:14px">
         <button class="btn" id="grant-consent" type="button">Grant consent and start</button>
         <button class="btn ghost" id="deny-consent" type="button">Block capture</button>
@@ -179,9 +131,8 @@
     </div>
   </div>
   <div id="toast" class="toast"></div>
-
   <script src="./js/data.js"></script>
   <script src="./js/engine.js"></script>
-  <script src="./js/app.js?v=3"></script>
+  <script src="./js/app.js?v=4"></script>
 </body>
 </html>
