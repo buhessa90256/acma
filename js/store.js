@@ -48,6 +48,7 @@
 
   let mqttClient = null;
   const watchers = {};
+  const pendingPub = [];
 
   function bus() {
     if (mqttClient) return mqttClient;
@@ -55,8 +56,11 @@
     mqttClient = mqtt.connect("wss://broker.emqx.io:8084/mqtt", {
       clientId: "acma-" + Math.random().toString(16).slice(2, 10),
       clean: true,
-      connectTimeout: 8000,
-      reconnectPeriod: 2000
+      connectTimeout: 10000,
+      reconnectPeriod: 1500
+    });
+    mqttClient.on("connect", function () {
+      pendingPub.splice(0).forEach(function (room) { rawPublish(room); });
     });
     mqttClient.on("message", function (topic, payload) {
       const code = String(topic || "").replace(ROOM_TOPIC, "");
@@ -69,42 +73,57 @@
     return mqttClient;
   }
 
+  function rawPublish(room) {
+    if (!mqttClient || !mqttClient.connected || !room || !room.code) return false;
+    mqttClient.publish(ROOM_TOPIC + room.code, JSON.stringify(room), { retain: true, qos: 1 });
+    return true;
+  }
+
   function publishRoom(room) {
-    const c = bus();
-    if (!c || !room || !room.code) return;
-    c.publish(ROOM_TOPIC + room.code, JSON.stringify(room), { retain: true, qos: 1 });
+    bus();
+    if (!rawPublish(room)) pendingPub.push(room);
+  }
+
+  function ready() {
+    return new Promise(function (resolve, reject) {
+      const c = bus();
+      if (!c) { reject(new Error("Sync library failed to load. Open the site in Chrome/Safari, not the old installed icon.")); return; }
+      if (c.connected) { resolve(c); return; }
+      const t = setTimeout(function () { reject(new Error("Cannot reach the room network. Check internet and try again.")); }, 10000);
+      c.once("connect", function () { clearTimeout(t); resolve(c); });
+    });
   }
 
   function subscribeRoom(code) {
     const c = bus();
     if (!c || !code) return;
-    c.subscribe(ROOM_TOPIC + code, { qos: 1 });
+    const go = function () { c.subscribe(ROOM_TOPIC + code, { qos: 1 }); };
+    if (c.connected) go(); else c.once("connect", go);
   }
 
   function fetchRemote(code) {
     code = String(code || "").trim().toUpperCase();
-    return new Promise(function (resolve, reject) {
-      const c = bus();
-      if (!c) { reject(new Error("Network sync is not ready. Refresh and try again.")); return; }
-      const topic = ROOM_TOPIC + code;
-      let done = false;
-      function finish(err, room) {
-        if (done) return;
-        done = true;
-        c.removeListener("message", onMsg);
-        if (err) reject(err); else resolve(room);
-      }
-      function onMsg(topicGot, payload) {
-        if (topicGot !== topic) return;
-        try { finish(null, JSON.parse(payload.toString())); }
-        catch (e) { finish(new Error("No room uses that code.")); }
-      }
-      c.on("message", onMsg);
-      const sub = function () { c.subscribe(topic, { qos: 1 }); };
-      if (c.connected) sub(); else c.once("connect", sub);
-      setTimeout(function () {
-        finish(new Error("No room uses that code. Ask the host to keep ACMA open, then join again."));
-      }, 6000);
+    return ready().then(function (c) {
+      return new Promise(function (resolve, reject) {
+        const topic = ROOM_TOPIC + code;
+        let done = false;
+        function finish(err, room) {
+          if (done) return;
+          done = true;
+          if (err) reject(err); else resolve(room);
+        }
+        function onMsg(topicGot, payload) {
+          if (topicGot !== topic) return;
+          try { finish(null, JSON.parse(payload.toString())); }
+          catch (e) { finish(new Error("No room uses that code.")); }
+        }
+        c.on("message", onMsg);
+        c.subscribe(topic, { qos: 1 }, function () {
+          setTimeout(function () {
+            finish(new Error("No published room for " + code + ". Host must open ACMA in the browser tab, create/open the room, then you join."));
+          }, 8000);
+        });
+      });
     });
   }
 
@@ -142,11 +161,12 @@
 
   function logout() { localStorage.removeItem(AUTH_KEY); }
 
-  function createRoom(name, topic) {
+  async function createRoom(name, topic) {
     const me = current();
     if (!me) throw new Error("Sign in first.");
     name = String(name || "").trim();
     if (name.length < 2) throw new Error("Give the room a name.");
+    await ready();
     let code = roomCode();
     const all = rooms();
     while (all.some(function (r) { return r.code === code; })) code = roomCode();
@@ -157,7 +177,8 @@
       messages: [], hands: [], live: false
     };
     all.unshift(room); setRooms(all);
-    subscribeRoom(room.code); publishRoom(room);
+    subscribeRoom(room.code);
+    publishRoom(room);
     return room;
   }
 
@@ -181,6 +202,7 @@
     const me = current();
     if (!me) throw new Error("Sign in first.");
     code = String(code || "").trim().toUpperCase().replace(/\s+/g, "");
+    await ready();
     let room = findRoomByCode(code);
     if (!room) {
       room = await fetchRemote(code);
@@ -257,12 +279,17 @@
     return function () { watchers[code] = (watchers[code] || []).filter(function (x) { return x !== fn; }); };
   }
 
+  function syncState() {
+    const c = bus();
+    return { ready: !!(c && c.connected) };
+  }
+
   bus();
 
   global.ACMA_STORE = {
     current: current, publicUser: publicUser, register: register, login: login, logout: logout,
     createRoom: createRoom, joinRoom: joinRoom, leaveRoom: leaveRoom, findRoomByCode: findRoomByCode,
     getRoom: getRoom, myRooms: myRooms, addMessage: addMessage, toggleHand: toggleHand, setLive: setLive,
-    populated: populated, initials: initials, watch: watch, publishRoom: publishRoom
+    populated: populated, initials: initials, watch: watch, publishRoom: publishRoom, ready: ready, syncState: syncState
   };
 })(window);
