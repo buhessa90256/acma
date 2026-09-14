@@ -4,99 +4,152 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#061018" />
-  <meta name="description" content="ACMA classroom and meeting assistant" />
   <title>ACMA — Classroom & Meeting Assistant</title>
   <link rel="manifest" href="./manifest.json" />
   <link rel="icon" href="./icons/icon.svg" type="image/svg+xml" />
-  <link rel="apple-touch-icon" href="./icons/icon.svg" />
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;550;650;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="./css/styles.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;550;650;700&display=swap" rel="stylesheet" />
+  <style>
+    .auth-card{max-width:460px;margin:18px auto 0}
+    .form{display:grid;gap:10px;margin-top:14px}
+    .form label{display:grid;gap:6px;font-size:.78rem;color:var(--muted)}
+    .form input{background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:11px 12px;color:var(--text);width:100%}
+    .form .err{color:var(--danger);font-size:.8rem;min-height:1.1em}
+    .tabs-mini{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}
+    .tabs-mini button.active{background:linear-gradient(180deg,#3af0d2,#1cbcab);color:#042226;border:0}
+    .code-pill{font-family:ui-monospace,Menlo,Consolas,monospace;letter-spacing:.18em;font-size:1.15rem;font-weight:700;color:var(--teal);background:#07141c;border:1px dashed rgba(46,230,200,.35);border-radius:14px;padding:12px;text-align:center}
+    .member{display:flex;gap:10px;align-items:center;background:var(--panel2);border:1px solid var(--line);border-radius:14px;padding:10px}
+    .composer{display:grid;grid-template-columns:1fr auto;gap:8px;margin-top:10px}
+  </style>
 </head>
 <body>
   <div class="app">
     <header class="topbar">
       <div class="brand">
         <img src="./icons/icon.svg" alt="ACMA" />
-        <div>
-          <h1>ACMA</h1>
-          <small>Classroom & Meeting Assistant</small>
-        </div>
+        <div><h1>ACMA</h1><small>Classroom & Meeting Assistant</small></div>
       </div>
       <div class="top-actions">
         <span id="chip-live" class="chip live hidden">LIVE</span>
-        <span id="who-chip" class="chip" role="button">Guest</span>
-        <nav class="desk-nav">
-          <button class="btn ghost sm" data-go="home" type="button" onclick="window.ACMA&&ACMA.go('home')">Home</button>
-          <button class="btn ghost sm" data-go="live" type="button" onclick="window.ACMA&&ACMA.go('live')">Live</button>
-          <button class="btn ghost sm" data-go="report" type="button" onclick="window.ACMA&&ACMA.go('report')">Report</button>
-          <button class="btn ghost sm" data-go="account" type="button" onclick="window.ACMA&&ACMA.go('account')">Account</button>
+        <span id="who-chip" class="chip" role="button">Sign in</span>
+        <nav class="desk-nav need-auth hidden">
+          <button class="btn ghost sm" data-go="home" type="button">Home</button>
+          <button class="btn ghost sm" data-go="room" type="button">Room</button>
+          <button class="btn ghost sm" data-go="live" type="button">Live</button>
+          <button class="btn ghost sm" data-go="report" type="button">Report</button>
+          <button class="btn ghost sm" data-go="account" type="button">Account</button>
         </nav>
       </div>
     </header>
 
-    <section id="screen-login" class="screen">
+    <section id="screen-auth" class="screen active">
       <div class="hero">
-        <p class="kicker">ACMA 1.0</p>
-        <h2>See who spoke. Hear what mattered. Minutes in five minutes.</h2>
-        <p>Pick a demo role. No password.</p>
+        <p class="kicker">Accounts and rooms</p>
+        <h2>Create an account. Open a room. Share the code.</h2>
+        <p>Any person can register. The host creates a room, then everyone else joins with the 6-character code.</p>
       </div>
-      <div class="grid roles">
-        <button class="role" data-role="host" type="button"><div class="avatar" style="background:#2ee6c833;color:#2ee6c8">AH</div><div><h3>Dr. Amal Hassan</h3><p>Faculty / Meeting Host</p></div></button>
-        <button class="role" data-role="attendee" type="button"><div class="avatar" style="background:#4cc9f033;color:#4cc9f0">JL</div><div><h3>Jordan Lee</h3><p>Student / Attendee</p></div></button>
-        <button class="role" data-role="admin" type="button"><div class="avatar" style="background:#f4b94233;color:#f4b942">SQ</div><div><h3>Samir Qureshi</h3><p>IT & AV</p></div></button>
-        <button class="role" data-role="compliance" type="button"><div class="avatar" style="background:#a78bfa33;color:#a78bfa">EV</div><div><h3>Elena Voss</h3><p>Compliance & Legal</p></div></button>
+      <div class="card auth-card">
+        <div class="tabs-mini">
+          <button class="btn ghost active" data-auth="register" type="button">Create account</button>
+          <button class="btn ghost" data-auth="login" type="button">Sign in</button>
+        </div>
+        <form id="form-register" class="form">
+          <label>Full name<input id="reg-name" type="text" required placeholder="Your name" /></label>
+          <label>Email<input id="reg-email" type="email" required placeholder="you@school.edu" /></label>
+          <label>Password<input id="reg-pass" type="password" required minlength="6" placeholder="At least 6 characters" /></label>
+          <div class="err" id="reg-err"></div>
+          <button class="btn full" type="submit">Create account</button>
+        </form>
+        <form id="form-login" class="form hidden">
+          <label>Email<input id="login-email" type="email" required /></label>
+          <label>Password<input id="login-pass" type="password" required /></label>
+          <div class="err" id="login-err"></div>
+          <button class="btn full" type="submit">Sign in</button>
+        </form>
       </div>
     </section>
 
-    <section id="screen-home" class="screen active">
+    <section id="screen-home" class="screen">
       <div id="home-hero" class="hero"></div>
-      <div id="home-stats" class="grid stats"></div>
-      <div id="home-actions" style="margin-top:14px"></div>
-      <h3 style="margin:18px 2px 8px;font-size:0.95rem">Recent sessions</h3>
-      <div id="home-sessions" class="grid"></div>
+      <div class="grid" style="margin-top:14px">
+        <div class="card">
+          <h3>Create a room</h3>
+          <p class="muted">You become the host. Share the generated code.</p>
+          <div class="form">
+            <label>Room name<input id="room-name" type="text" placeholder="Systems Design Studio" /></label>
+            <label>Topic<input id="room-topic" type="text" placeholder="Week 4 review" /></label>
+            <div class="err" id="create-err"></div>
+            <button class="btn full" id="btn-create-room" type="button">Create room</button>
+          </div>
+        </div>
+        <div class="card">
+          <h3>Join a room</h3>
+          <p class="muted">Enter the host 6-character code.</p>
+          <div class="form">
+            <label>Room code<input id="join-code" type="text" maxlength="8" placeholder="AB12CD" style="text-transform:uppercase" /></label>
+            <div class="err" id="join-err"></div>
+            <button class="btn full" id="btn-join-room" type="button">Join room</button>
+          </div>
+        </div>
+      </div>
+      <h3 style="margin:18px 2px 8px;font-size:0.95rem">Your rooms</h3>
+      <div id="home-rooms" class="grid"></div>
+    </section>
+
+    <section id="screen-room" class="screen">
+      <div class="hero">
+        <p class="kicker" id="room-meta">Room</p>
+        <h2 id="room-title">Room</h2>
+        <p>Share this code so others can join.</p>
+        <div class="code-pill" id="room-code">------</div>
+        <div class="row" style="margin-top:12px">
+          <button class="btn sm" id="btn-copy-code" type="button">Copy code</button>
+          <button class="btn sm" id="btn-start-live" type="button">Start live session</button>
+          <button class="btn ghost sm" id="btn-leave" type="button">Leave room</button>
+          <span class="chip" id="room-status">OPEN</span>
+        </div>
+      </div>
+      <h3 style="margin:16px 2px 8px;font-size:0.95rem">Members</h3>
+      <div id="room-members" class="grid"></div>
+      <h3 style="margin:16px 2px 8px;font-size:0.95rem">Room thread / transcript</h3>
+      <div class="card">
+        <div id="room-chat" class="list"></div>
+        <div class="composer">
+          <input id="chat-text" type="text" placeholder="Add a note to the minutes" />
+          <button class="btn" id="btn-send" type="button">Send</button>
+        </div>
+      </div>
     </section>
 
     <section id="screen-live" class="screen">
       <div class="row space" style="margin-bottom:10px">
         <div>
-          <div class="kicker" id="session-code">CLASS-402-B</div>
-          <strong id="session-title">Systems Design Studio — Week 4</strong>
+          <div class="kicker" id="session-code">ROOM</div>
+          <strong id="session-title">Live room</strong>
         </div>
-        <span class="chip live" id="live-status">LIVE</span>
+        <span class="chip live" id="live-status">STANDBY</span>
       </div>
-      <div class="consent-banner">In-memory processing is on. Recordings persist only if consent was granted.</div>
       <div class="live-layout">
         <div>
           <div class="room">
             <video id="room-video" class="hidden" autoplay muted playsinline></video>
-            <div id="room-fallback" class="feed" style="display:grid;place-items:center;color:#8aa3b0;height:240px">Room preview</div>
-            <div class="overlay"><span class="chip">Edge vision</span><span class="chip">Whisper STT</span></div>
+            <div id="room-fallback" class="feed" style="display:grid;place-items:center;color:#8aa3b0;height:240px">Camera preview</div>
           </div>
           <div id="faces" class="faces"></div>
           <div class="caption-box" style="margin-top:10px">
-            <div class="who" id="caption-who">Waiting for speech</div>
-            <div id="caption-text">Live captions appear here.</div>
+            <div class="who" id="caption-who">Waiting</div>
+            <div id="caption-text">Room notes appear here.</div>
           </div>
         </div>
         <div>
           <div class="grid cards">
-            <div class="card stat"><div class="val" id="att-val">82%</div><div class="lbl">Attention index</div><div class="meter" style="margin-top:8px"><span id="att-bar"></span></div></div>
-            <div class="card stat"><div class="val" id="db-val">42 dB</div><div class="lbl">Room level</div><div class="meter" id="db-meter" style="margin-top:8px"><span id="db-bar"></span></div></div>
-            <div class="card stat"><div class="val" id="int-val">0</div><div class="lbl">Interruptions</div></div>
+            <div class="card stat"><div class="val" id="att-val">0</div><div class="lbl">Members</div><div class="meter" style="margin-top:8px"><span id="att-bar"></span></div></div>
+            <div class="card stat"><div class="val" id="db-val">off</div><div class="lbl">Live flag</div><div class="meter" id="db-meter" style="margin-top:8px"><span id="db-bar"></span></div></div>
+            <div class="card stat"><div class="val" id="int-val">0</div><div class="lbl">Notes</div></div>
             <div class="card stat"><div class="val" id="hands-val">0</div><div class="lbl">Raised hands</div></div>
           </div>
-          <div class="card" style="margin-top:12px">
-            <div class="row space">
-              <h3>Diarized feed</h3>
-              <label class="muted">Speed
-                <select id="speed"><option value="1">1x</option><option value="2" selected>2x</option><option value="4">4x</option></select>
-              </label>
-            </div>
-            <div id="transcript" class="list" style="margin-top:8px"></div>
-          </div>
-          <div class="card" style="margin-top:12px"><h3>Multimodal object / sec</h3><pre id="json-live" class="json">{}</pre></div>
+          <div class="card" style="margin-top:12px"><h3>Live transcript</h3><div id="transcript" class="list" style="margin-top:8px"></div></div>
+          <div class="card" style="margin-top:12px"><h3>Room object</h3><pre id="json-live" class="json">{}</pre></div>
           <div class="row" style="margin-top:12px">
             <button class="btn sm" id="btn-hand" type="button">Raise hand</button>
             <button class="btn ghost sm" id="btn-mic" type="button">Host mic</button>
@@ -107,32 +160,18 @@
     </section>
 
     <section id="screen-report" class="screen"><div id="report-body"></div></section>
-    <section id="screen-admin" class="screen"><div id="admin-body"></div></section>
-    <section id="screen-compliance" class="screen"><div id="compliance-body"></div></section>
     <section id="screen-account" class="screen"><div id="account-body"></div></section>
   </div>
 
-  <nav class="tabbar">
-    <button data-go="home" class="active" type="button" onclick="window.ACMA&&ACMA.go('home')">Home</button>
-    <button data-go="live" type="button" onclick="window.ACMA&&ACMA.go('live')">Live</button>
-    <button data-go="report" type="button" onclick="window.ACMA&&ACMA.go('report')">Report</button>
-    <button data-go="account" type="button" onclick="window.ACMA&&ACMA.go('account')">Account</button>
+  <nav class="tabbar need-auth hidden">
+    <button data-go="home" class="active" type="button">Home</button>
+    <button data-go="room" type="button">Room</button>
+    <button data-go="live" type="button">Live</button>
+    <button data-go="account" type="button">Account</button>
   </nav>
 
-  <div id="modal-consent" class="modal">
-    <div class="sheet">
-      <h3>Capture consent</h3>
-      <p class="muted">ACMA will process faces, lip activity, and voice in-memory to bind speakers.</p>
-      <label class="toggle"><span>Also keep an encrypted recording</span><input id="consent-record" type="checkbox" /></label>
-      <div class="row" style="margin-top:14px">
-        <button class="btn" id="grant-consent" type="button">Grant consent and start</button>
-        <button class="btn ghost" id="deny-consent" type="button">Block capture</button>
-      </div>
-    </div>
-  </div>
   <div id="toast" class="toast"></div>
-  <script src="./js/data.js"></script>
-  <script src="./js/engine.js"></script>
-  <script src="./js/app.js?v=4"></script>
+  <script src="./js/store.js"></script>
+  <script src="./js/app.js?v=5"></script>
 </body>
 </html>
