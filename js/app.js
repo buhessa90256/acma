@@ -52,7 +52,7 @@
   }
 
   function setAuthMode(mode) {
-    $("#auth-register") && $("#form-register").classList.toggle("hidden", mode !== "register");
+    $("#form-register").classList.toggle("hidden", mode !== "register");
     $("#form-login").classList.toggle("hidden", mode !== "login");
     $$("[data-auth]").forEach(function (b) { b.classList.toggle("active", b.getAttribute("data-auth") === mode); });
   }
@@ -73,14 +73,32 @@
     try {
       user = await ACMA_STORE.login($("#login-email").value, $("#login-pass").value);
       refreshUser(); renderHome(); show("home");
+      publishMine();
       toast("Signed in as " + user.name + ".");
     } catch (err) { $("#login-err").textContent = err.message; }
+  }
+
+  function publishMine() {
+    if (!ACMA_STORE.publishRoom) return;
+    ACMA_STORE.myRooms().forEach(function (r) { ACMA_STORE.publishRoom(r); });
+  }
+
+  function bindRoom(next) {
+    room = ACMA_STORE.populated(next);
+    if (room && ACMA_STORE.watch) {
+      ACMA_STORE.watch(room.code, function (updated) {
+        if (!room || updated.code !== room.code) return;
+        room = ACMA_STORE.populated(updated);
+        if ($("#screen-room").classList.contains("active")) renderRoom();
+        if ($("#screen-live").classList.contains("active")) renderLive();
+      });
+    }
   }
 
   function renderHome() {
     refreshUser();
     if (!user) { show("auth"); return; }
-    $("#home-hero").innerHTML = '<p class="kicker">Your workspace</p><h2>Hello, ' + user.name.split(" ")[0] + '.</h2><p>Create a room, then share the code so others can join.</p>';
+    $("#home-hero").innerHTML = '<p class="kicker">Your workspace</p><h2>Hello, ' + user.name.split(" ")[0] + '.</h2><p>Create a room, share the code, and others can join from another phone or PC.</p>';
     const list = ACMA_STORE.myRooms().map(function (r) {
       const p = ACMA_STORE.populated(r);
       const role = r.hostId === user.id ? "Host" : "Member";
@@ -92,7 +110,8 @@
   function openRoom(id) {
     const found = ACMA_STORE.getRoom(id);
     if (!found) { toast("Room not found."); return; }
-    room = ACMA_STORE.populated(found);
+    bindRoom(found);
+    if (ACMA_STORE.publishRoom) ACMA_STORE.publishRoom(found);
     renderRoom(); show("room");
   }
 
@@ -100,19 +119,20 @@
     $("#create-err").textContent = "";
     try {
       const created = ACMA_STORE.createRoom($("#room-name").value, $("#room-topic").value);
-      room = ACMA_STORE.populated(created);
+      bindRoom(created);
       $("#room-name").value = ""; $("#room-topic").value = "";
       renderRoom(); show("room");
       toast("Room created. Share code " + room.code);
     } catch (err) { $("#create-err").textContent = err.message; }
   }
 
-  function joinByCode() {
-    $("#join-err").textContent = "";
+  async function joinByCode() {
+    $("#join-err").textContent = "Looking up room on the network...";
     try {
-      const joined = ACMA_STORE.joinRoom($("#join-code").value);
-      room = ACMA_STORE.populated(joined);
+      const joined = await ACMA_STORE.joinRoom($("#join-code").value);
+      bindRoom(joined);
       $("#join-code").value = "";
+      $("#join-err").textContent = "";
       renderRoom(); show("room");
       toast("Joined " + room.name);
     } catch (err) { $("#join-err").textContent = err.message; }
@@ -120,7 +140,8 @@
 
   function reloadRoom() {
     if (!room) return null;
-    room = ACMA_STORE.populated(ACMA_STORE.getRoom(room.id));
+    const fresh = ACMA_STORE.getRoom(room.id) || ACMA_STORE.findRoomByCode(room.code);
+    room = ACMA_STORE.populated(fresh || room);
     return room;
   }
 
@@ -139,10 +160,10 @@
     $("#room-code").textContent = room.code;
     $("#room-status").textContent = room.live ? "LIVE" : String(room.status).toUpperCase();
     $("#room-members").innerHTML = room.members.map(function (m) {
-      const hand = room.hands.indexOf(m.userId) !== -1;
+      const hand = (room.hands || []).indexOf(m.userId) !== -1;
       return '<div class="member"><div class="avatar" style="background:#2ee6c833;color:#2ee6c8">' + m.initials + "</div><div><b>" + m.name + '</b><p class="muted">' + m.role + (hand ? " \u00b7 hand raised" : "") + "</p></div></div>";
     }).join("");
-    $("#room-chat").innerHTML = room.messages.slice(-40).map(function (msg) {
+    $("#room-chat").innerHTML = (room.messages || []).slice(-40).map(function (msg) {
       const t = new Date(msg.at);
       const stamp = String(t.getHours()).padStart(2, "0") + ":" + String(t.getMinutes()).padStart(2, "0");
       return '<div class="line"><time>' + stamp + '</time><div><span class="spk">' + msg.name + "</span> " + escapeHtml(msg.text) + "</div></div>";
@@ -172,13 +193,13 @@
     $("#session-title").textContent = room.name;
     $("#live-status").textContent = room.live ? "LIVE" : "STANDBY";
     $("#faces").innerHTML = room.members.map(function (m) {
-      const hand = room.hands.indexOf(m.userId) !== -1;
+      const hand = (room.hands || []).indexOf(m.userId) !== -1;
       return '<div class="face"><div class="dot" style="background:#2ee6c833;color:#2ee6c8">' + m.initials + "</div><b>" + m.name.split(" ")[0] + '</b><span class="muted">' + (hand ? "hand" : m.role) + "</span></div>";
     }).join("");
-    const last = room.messages[room.messages.length - 1];
+    const last = room.messages && room.messages[room.messages.length - 1];
     $("#caption-who").textContent = last ? last.name + " \u00b7 room feed" : "Waiting";
     $("#caption-text").textContent = last ? last.text : "Type a note or use Host mic.";
-    $("#transcript").innerHTML = room.messages.slice().reverse().slice(0, 30).map(function (msg) {
+    $("#transcript").innerHTML = (room.messages || []).slice().reverse().slice(0, 30).map(function (msg) {
       const t = new Date(msg.at);
       const stamp = String(t.getHours()).padStart(2, "0") + ":" + String(t.getMinutes()).padStart(2, "0");
       return '<div class="line"><time>' + stamp + '</time><div><span class="spk">' + msg.name + "</span> " + escapeHtml(msg.text) + "</div></div>";
@@ -186,8 +207,8 @@
     $("#json-live").textContent = JSON.stringify({ timestamp: new Date().toISOString(), room_code: room.code, members: room.members.map(function (m) { return m.name; }), live: room.live }, null, 2);
     $("#att-val").textContent = room.members.length;
     $("#att-bar").style.width = Math.min(100, room.members.length * 18) + "%";
-    $("#hands-val").textContent = room.hands.length;
-    $("#int-val").textContent = room.messages.length;
+    $("#hands-val").textContent = (room.hands || []).length;
+    $("#int-val").textContent = (room.messages || []).length;
     $("#db-val").textContent = room.live ? "on" : "off";
   }
 
@@ -206,26 +227,26 @@
     stopCamera();
     $("#chip-live").classList.add("hidden");
     reloadRoom(); renderReport(); show("report");
-    toast("Session closed. Minutes built from the room thread.");
+    toast("Session closed.");
   }
 
   function renderReport() {
     refreshUser();
     const rooms = user ? ACMA_STORE.myRooms() : [];
-    const target = room ? ACMA_STORE.populated(ACMA_STORE.getRoom(room.id)) : (rooms[0] ? ACMA_STORE.populated(rooms[0]) : null);
+    const target = room ? ACMA_STORE.populated(ACMA_STORE.getRoom(room.id) || room) : (rooms[0] ? ACMA_STORE.populated(rooms[0]) : null);
     if (!target) {
       $("#report-body").innerHTML = '<div class="hero"><p class="kicker">Minutes</p><h2>No room yet</h2><p>Create or join a room first.</p></div>';
       return;
     }
     const speakers = {};
-    target.messages.forEach(function (m) { speakers[m.name] = (speakers[m.name] || 0) + 1; });
+    (target.messages || []).forEach(function (m) { speakers[m.name] = (speakers[m.name] || 0) + 1; });
     const ranked = Object.keys(speakers).sort(function (a, b) { return speakers[b] - speakers[a]; });
     $("#report-body").innerHTML =
-      '<div class="hero"><p class="kicker">Session report</p><h2>' + target.name + "</h2><p>" + target.code + " \u00b7 " + target.members.length + " members \u00b7 " + target.messages.length + " notes</p></div>" +
-      '<section class="card report" style="margin-top:12px"><h3>Summary</h3><p>' + target.members.length + " people in " + target.name + ". " + target.messages.length + " contributions captured.</p></section>" +
-      '<section class="card report"><h3>Who spoke</h3><ul>' + (ranked.length ? ranked.map(function (n) { return "<li>" + n + " \u2014 " + speakers[n] + " turns</li>"; }).join("") : "<li>No speakers yet.</li>") + "</ul></section>" +
-      '<section class="card"><h3>Full transcript</h3><div class="list" style="max-height:360px;margin-top:8px">' +
-      target.messages.map(function (msg) { return '<div class="line"><time></time><div><span class="spk">' + msg.name + "</span> " + escapeHtml(msg.text) + "</div></div>"; }).join("") +
+      '<div class="hero"><p class="kicker">Session report</p><h2>' + target.name + "</h2><p>" + target.code + " \u00b7 " + target.members.length + " members</p></div>" +
+      '<section class="card report" style="margin-top:12px"><h3>Who spoke</h3><ul>' +
+      (ranked.length ? ranked.map(function (n) { return "<li>" + n + " \u2014 " + speakers[n] + " turns</li>"; }).join("") : "<li>No speakers yet.</li>") +
+      '</ul></section><section class="card"><h3>Transcript</h3><div class="list" style="max-height:360px;margin-top:8px">' +
+      (target.messages || []).map(function (msg) { return '<div class="line"><time></time><div><span class="spk">' + msg.name + "</span> " + escapeHtml(msg.text) + "</div></div>"; }).join("") +
       "</div></section>";
   }
 
@@ -306,5 +327,5 @@
   window.ACMA = { go: go };
   refreshUser();
   setAuthMode("register");
-  if (user) { renderHome(); show("home"); } else show("auth");
+  if (user) { publishMine(); renderHome(); show("home"); } else show("auth");
 })();
