@@ -45,7 +45,7 @@
       <div class="hero">
         <p class="kicker">Accounts and rooms</p>
         <h2>Create an account. Open a room. Share the code.</h2>
-        <p>Any person can register. The host creates a room, then everyone else joins with the 6-character code from any device.</p>
+        <p>Use the browser tab, not the old installed icon. Host creates the room, then the other device joins the same code.</p>
       </div>
       <div class="card auth-card">
         <div class="tabs-mini">
@@ -53,9 +53,9 @@
           <button class="btn ghost" data-auth="login" type="button">Sign in</button>
         </div>
         <form id="form-register" class="form">
-          <label>Full name<input id="reg-name" type="text" required placeholder="Your name" /></label>
-          <label>Email<input id="reg-email" type="email" required placeholder="you@school.edu" /></label>
-          <label>Password<input id="reg-pass" type="password" required minlength="6" placeholder="At least 6 characters" /></label>
+          <label>Full name<input id="reg-name" type="text" required /></label>
+          <label>Email<input id="reg-email" type="email" required /></label>
+          <label>Password<input id="reg-pass" type="password" required minlength="6" /></label>
           <div class="err" id="reg-err"></div>
           <button class="btn full" type="submit">Create account</button>
         </form>
@@ -72,19 +72,17 @@
       <div class="grid" style="margin-top:14px">
         <div class="card">
           <h3>Create a room</h3>
-          <p class="muted">You become the host. Share the generated code.</p>
           <div class="form">
-            <label>Room name<input id="room-name" type="text" placeholder="Systems Design Studio" /></label>
-            <label>Topic<input id="room-topic" type="text" placeholder="Week 4 review" /></label>
+            <label>Room name<input id="room-name" type="text" /></label>
+            <label>Topic<input id="room-topic" type="text" /></label>
             <div class="err" id="create-err"></div>
             <button class="btn full" id="btn-create-room" type="button">Create room</button>
           </div>
         </div>
         <div class="card">
           <h3>Join a room</h3>
-          <p class="muted">Enter the host 6-character code.</p>
           <div class="form">
-            <label>Room code<input id="join-code" type="text" maxlength="8" placeholder="AB12CD" style="text-transform:uppercase" /></label>
+            <label>Room code<input id="join-code" type="text" maxlength="8" style="text-transform:uppercase" /></label>
             <div class="err" id="join-err"></div>
             <button class="btn full" id="btn-join-room" type="button">Join room</button>
           </div>
@@ -97,7 +95,6 @@
       <div class="hero">
         <p class="kicker" id="room-meta">Room</p>
         <h2 id="room-title">Room</h2>
-        <p>Share this code so others can join from another phone or PC.</p>
         <div class="code-pill" id="room-code">------</div>
         <div class="row" style="margin-top:12px">
           <button class="btn sm" id="btn-copy-code" type="button">Copy code</button>
@@ -108,11 +105,10 @@
       </div>
       <h3 style="margin:16px 2px 8px;font-size:0.95rem">Members</h3>
       <div id="room-members" class="grid"></div>
-      <h3 style="margin:16px 2px 8px;font-size:0.95rem">Room thread / transcript</h3>
-      <div class="card">
+      <div class="card" style="margin-top:12px">
         <div id="room-chat" class="list"></div>
         <div class="composer">
-          <input id="chat-text" type="text" placeholder="Add a note to the minutes" />
+          <input id="chat-text" type="text" placeholder="Add a note" />
           <button class="btn" id="btn-send" type="button">Send</button>
         </div>
       </div>
@@ -139,13 +135,12 @@
         </div>
         <div>
           <div class="grid cards">
-            <div class="card stat"><div class="val" id="att-val">0</div><div class="lbl">Members</div><div class="meter" style="margin-top:8px"><span id="att-bar"></span></div></div>
-            <div class="card stat"><div class="val" id="db-val">off</div><div class="lbl">Live flag</div><div class="meter" id="db-meter" style="margin-top:8px"><span id="db-bar"></span></div></div>
+            <div class="card stat"><div class="val" id="att-val">0</div><div class="lbl">Members</div></div>
+            <div class="card stat"><div class="val" id="db-val">off</div><div class="lbl">Live flag</div></div>
             <div class="card stat"><div class="val" id="int-val">0</div><div class="lbl">Notes</div></div>
             <div class="card stat"><div class="val" id="hands-val">0</div><div class="lbl">Raised hands</div></div>
           </div>
-          <div class="card" style="margin-top:12px"><h3>Live transcript</h3><div id="transcript" class="list" style="margin-top:8px"></div></div>
-          <div class="card" style="margin-top:12px"><h3>Room object</h3><pre id="json-live" class="json">{}</pre></div>
+          <div class="card" style="margin-top:12px"><h3>Live transcript</h3><div id="transcript" class="list"></div></div>
           <div class="row" style="margin-top:12px">
             <button class="btn sm" id="btn-hand" type="button">Raise hand</button>
             <button class="btn ghost sm" id="btn-mic" type="button">Host mic</button>
@@ -165,7 +160,7 @@
   </nav>
   <div id="toast" class="toast"></div>
   <script src="https://cdn.jsdelivr.net/npm/mqtt@5/dist/mqtt.min.js"></script>
-  <script src="./js/store.js?v=6"></script>
-  <script src="./js/app.js?v=6"></script>
+  <script src="./js/store.js?v=7"></script>
+  <script src="./js/app.js?v=7"></script>
 </body>
 </html>
