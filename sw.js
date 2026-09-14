@@ -1,11 +1,10 @@
-const CACHE = "acma-v4";
+const CACHE = "acma-v5";
 const ASSETS = [
   "./",
   "./index.html",
   "./offline.html",
   "./css/styles.css",
-  "./js/data.js",
-  "./js/engine.js",
+  "./js/store.js",
   "./js/app.js",
   "./manifest.json",
   "./icons/icon.svg"
